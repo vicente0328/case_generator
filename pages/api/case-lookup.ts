@@ -15,7 +15,12 @@ export interface CaseData {
 type ApiRecord = Record<string, string>;
 
 async function fetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: {
+      Referer: "https://case-generator-eight.vercel.app/",
+      Origin: "https://case-generator-eight.vercel.app",
+    },
+  });
   const text = await res.text();
   // Strip BOM if present
   const clean = text.replace(/^\uFEFF/, "").trim();

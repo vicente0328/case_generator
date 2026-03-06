@@ -7,7 +7,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const url = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc)}&target=prec&type=JSON&query=${encodeURIComponent(query)}&display=5&page=1`;
 
   try {
-    const fetchRes = await fetch(url);
+    const fetchRes = await fetch(url, {
+      headers: {
+        Referer: "https://case-generator-eight.vercel.app/",
+        Origin: "https://case-generator-eight.vercel.app",
+      },
+    });
     const status = fetchRes.status;
     const contentType = fetchRes.headers.get("content-type") || "";
     const text = await fetchRes.text();
