@@ -14,7 +14,7 @@ import {
   signOut,
   updateProfile,
 } from "firebase/auth";
-import { auth, googleProvider } from "@/lib/firebase";
+import { auth, googleProvider, isConfigured } from "@/lib/firebase";
 
 interface AuthContextType {
   user: User | null;
@@ -32,6 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Skip if Firebase is not configured (env vars missing)
+    if (!isConfigured) {
+      setLoading(false);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setLoading(false);

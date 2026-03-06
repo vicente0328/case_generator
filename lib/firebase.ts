@@ -29,4 +29,6 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
 
 const googleProvider = new GoogleAuthProvider();
 
-export { app, auth, db, googleProvider };
+const isConfigured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
+
+export { app, auth, db, googleProvider, isConfigured };
