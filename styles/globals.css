@@ -1,17 +1,6 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ios-bg: #F2F2F7;
-  --color-ios-blue: #007AFF;
-  --color-ios-green: #34C759;
-  --color-ios-red: #FF3B30;
-  --color-ios-gray: #8E8E93;
-  --color-ios-gray2: #AEAEB2;
-  --color-ios-gray3: #C7C7CC;
-  --color-ios-gray4: #D1D1D6;
-  --color-ios-gray5: #E5E5EA;
-  --color-ios-gray6: #F2F2F7;
-
   --font-family-sans: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
@@ -25,58 +14,18 @@ html {
   font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #F2F2F7;
-  color: #1C1C1E;
+  background: #F6F6F7;
+  color: #09090B;
   overflow-x: hidden;
   scroll-behavior: smooth;
 }
 
 body {
-  background-color: #F2F2F7;
+  background: #F6F6F7;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
+a { color: inherit; text-decoration: none; }
 
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 600;
-  letter-spacing: -0.025em;
-}
+h1, h2, h3 { letter-spacing: -0.03em; }
 
-::-webkit-scrollbar {
-  width: 0;
-  background: transparent;
-}
-
-@layer components {
-  .btn-primary {
-    @apply bg-[#007AFF] text-white px-5 py-2.5 rounded-full font-semibold text-[15px] transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 active:scale-95 hover:bg-[#0062cc];
-  }
-
-  .btn-secondary {
-    @apply bg-[#F2F2F7] text-[#636366] px-5 py-2.5 rounded-full font-medium text-[15px] transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 active:scale-95 hover:bg-[#E5E5EA];
-  }
-
-  .card {
-    @apply bg-white rounded-[24px] border border-[#E5E5EA]/80 shadow-[0_4px_24px_rgba(0,0,0,0.04)] overflow-hidden;
-  }
-
-  .input-field {
-    @apply w-full bg-[#F2F2F7] rounded-[12px] px-4 py-3 text-[16px] text-[#1C1C1E] placeholder-[#C7C7CC] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/20 focus:bg-white transition-all;
-  }
-
-  .ios-header {
-    @apply sticky top-0 z-50 bg-white/85 backdrop-blur-2xl border-b border-black/[0.06];
-  }
-
-  .section-label {
-    @apply text-[11px] font-semibold uppercase tracking-widest mb-2;
-  }
-}
-
-.legal-content {
-  line-height: 1.75;
-  font-size: 15px;
-}
+::-webkit-scrollbar { width: 0; background: transparent; }

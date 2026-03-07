@@ -3,16 +3,8 @@ import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { db } from "@/lib/firebase";
-import {
-  collection,
-  addDoc,
-  serverTimestamp,
-  getDocs,
-  query,
-  orderBy,
-} from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
-import { ArrowPathIcon, SparklesIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
 
 type Step = "input" | "preview" | "generating" | "done";
 
@@ -24,7 +16,7 @@ interface Comment {
   createdAt: { seconds: number } | null;
 }
 
-interface ContentSection {
+interface Section {
   type: "facts" | "question" | "answer" | "precedent" | "other";
   heading: string;
   body: string;
@@ -38,132 +30,139 @@ function formatDate(d: string): string {
   return d;
 }
 
-function parseContent(text: string): ContentSection[] {
-  const sections: ContentSection[] = [];
+function parseContent(text: string): Section[] {
+  const sections: Section[] = [];
   const lines = text.split("\n");
-  let current: ContentSection | null = null;
+  let cur: Section | null = null;
 
   const flush = () => {
-    if (current && (current.body.trim() || current.heading)) {
-      current.body = current.body.trim();
-      sections.push(current);
+    if (cur && (cur.body.trim() || cur.heading)) {
+      cur.body = cur.body.trim();
+      sections.push(cur);
     }
   };
 
   for (const line of lines) {
     const t = line.trim();
     if (/^<사실관계>$|^\[사실관계\]$/.test(t)) {
-      flush(); current = { type: "facts", heading: "사실관계", body: "" };
+      flush(); cur = { type: "facts", heading: "사실관계", body: "" };
     } else if (/^<문\s*\d*>|^<문제>/.test(t)) {
-      flush(); current = { type: "question", heading: t.replace(/^<|>$/g, "").trim(), body: "" };
-    } else if (/^\[문\s*\d+\]\s*\(\d+점\)/.test(t) && current?.type !== "answer") {
-      flush(); current = { type: "question", heading: t.replace(/\*\*/g, ""), body: "" };
+      flush(); cur = { type: "question", heading: t.replace(/^<|>$/g, "").trim(), body: "" };
+    } else if (/^\[문\s*\d+\]\s*\(\d+점\)/.test(t) && cur?.type !== "answer") {
+      flush(); cur = { type: "question", heading: t.replace(/\*\*/g, ""), body: "" };
     } else if (/^\[해설 및 모범답안\]|^\[해설\]/.test(t)) {
-      flush(); current = { type: "answer", heading: "해설 및 모범답안", body: "" };
+      flush(); cur = { type: "answer", heading: "해설 및 모범답안", body: "" };
     } else if (/^\[모델\s*판례/.test(t)) {
-      flush(); current = { type: "precedent", heading: "모델 판례", body: "" };
-    } else if (current) {
-      current.body += (current.body ? "\n" : "") + line;
+      flush(); cur = { type: "precedent", heading: "모델 판례", body: "" };
+    } else if (cur) {
+      cur.body += (cur.body ? "\n" : "") + line;
     } else {
-      flush(); current = { type: "other", heading: "", body: line };
+      flush(); cur = { type: "other", heading: "", body: line };
     }
   }
   flush();
-  return sections.filter((s) => s.body.trim().length > 0 || s.heading.trim().length > 0);
+  return sections.filter(s => s.body.trim() || s.heading);
 }
 
-/* ─── Sub-components ─── */
-
-function CaseInfoCard({ data, onReset }: { data: CaseData; onReset: () => void }) {
+/* ── 판례 확인 카드 ── */
+function CaseCard({ data, onReset }: { data: CaseData; onReset: () => void }) {
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3">
+    <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+      {/* 헤더 */}
+      <div className="px-6 py-5 border-b border-zinc-100 flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#34C759] inline-block" />
-            <span className="text-[11px] font-semibold text-[#8E8E93] uppercase tracking-widest">판례 확인</span>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">판례 확인</span>
           </div>
-          <p className="text-[22px] font-bold text-[#1C1C1E] font-mono tracking-tight leading-none">{data.caseNumber}</p>
-          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-            {data.court && <span className="text-[13px] text-[#8E8E93]">{data.court}</span>}
-            {data.date && <><span className="text-[#D1D1D6]">·</span><span className="text-[13px] text-[#8E8E93]">{formatDate(data.date)}</span></>}
-            {data.caseName && <><span className="text-[#D1D1D6]">·</span><span className="text-[13px] text-[#8E8E93] truncate max-w-[200px]">{data.caseName}</span></>}
-          </div>
+          <p className="text-[21px] font-bold tracking-tight font-mono text-zinc-900">{data.caseNumber}</p>
+          <p className="text-[13px] text-zinc-400 mt-1.5">
+            {[data.court, data.date && formatDate(data.date), data.caseName].filter(Boolean).join(" · ")}
+          </p>
         </div>
         <button
           onClick={onReset}
-          className="flex-shrink-0 text-[13px] text-[#8E8E93] hover:text-[#1C1C1E] transition-colors px-3 py-1.5 rounded-full hover:bg-[#F2F2F7] mt-1"
+          className="flex-shrink-0 text-[13px] text-zinc-400 hover:text-zinc-700 transition-colors mt-1 px-2 py-1 rounded-lg hover:bg-zinc-50"
         >
-          다시 입력
+          ← 다시 입력
         </button>
       </div>
 
-      <div>
-        <p className="text-[11px] font-semibold text-[#007AFF] uppercase tracking-widest mb-2">판시사항</p>
-        {data.rulingPoints ? (
-          <div className="bg-[#F0F7FF] rounded-[14px] px-4 py-3.5">
-            <p className="text-[14px] text-[#1C1C1E] leading-[1.75] whitespace-pre-line">{data.rulingPoints}</p>
-          </div>
-        ) : (
-          <p className="text-[13px] text-[#C7C7CC]">정보 없음</p>
-        )}
+      {/* 판시사항 */}
+      <div className="px-6 py-5 border-b border-zinc-100">
+        <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-3">판시사항</p>
+        {data.rulingPoints
+          ? <p className="text-[14px] text-zinc-700 leading-[1.75] whitespace-pre-line">{data.rulingPoints}</p>
+          : <p className="text-[13px] text-zinc-300 italic">정보 없음</p>
+        }
       </div>
 
-      <div>
-        <p className="text-[11px] font-semibold text-[#9A6D1F] uppercase tracking-widest mb-2">판결요지</p>
-        {data.rulingRatio ? (
-          <div className="bg-[#FFFBF0] rounded-[14px] px-4 py-3.5">
-            <p className="text-[14px] text-[#1C1C1E] leading-[1.75] whitespace-pre-line">{data.rulingRatio}</p>
-          </div>
-        ) : (
-          <p className="text-[13px] text-[#C7C7CC]">정보 없음</p>
-        )}
+      {/* 판결요지 */}
+      <div className="px-6 py-5">
+        <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-3">판결요지</p>
+        {data.rulingRatio
+          ? <p className="text-[14px] text-zinc-700 leading-[1.75] whitespace-pre-line">{data.rulingRatio}</p>
+          : <p className="text-[13px] text-zinc-300 italic">정보 없음</p>
+        }
       </div>
     </div>
   );
 }
 
+/* ── 생성된 콘텐츠 ── */
 function GeneratedContent({ content }: { content: string }) {
   const sections = parseContent(content);
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {sections.map((s, i) => {
         if (s.type === "facts") return (
-          <div key={i} className="rounded-[16px] overflow-hidden border border-[#F0D080]/50 bg-[#FFFDF5]">
-            <div className="px-5 py-2.5 border-b border-[#F0D080]/30">
-              <span className="text-[11px] font-bold text-[#9A6D1F] uppercase tracking-widest">사실관계</span>
+          <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
+            <div className="px-5 py-3 border-b border-amber-100 bg-amber-50/60 flex items-center gap-2">
+              <div className="w-1 h-4 rounded-full bg-amber-300 flex-shrink-0" />
+              <span className="text-[11px] font-bold text-amber-600 uppercase tracking-widest">사실관계</span>
             </div>
-            <p className="px-5 py-4 text-[15px] text-[#1C1C1E] leading-[1.85] whitespace-pre-line">{s.body}</p>
+            <div className="px-5 py-5">
+              <p className="text-[15px] text-zinc-800 leading-[1.9] whitespace-pre-line">{s.body}</p>
+            </div>
           </div>
         );
         if (s.type === "question") return (
-          <div key={i} className="rounded-[16px] overflow-hidden border border-[#007AFF]/10 bg-[#F5FAFF]">
-            <div className="px-5 py-2.5 border-b border-[#007AFF]/10">
-              <span className="text-[11px] font-bold text-[#007AFF] uppercase tracking-widest">{s.heading}</span>
+          <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
+            <div className="px-5 py-3 border-b border-blue-100 bg-blue-50/60 flex items-center gap-2">
+              <div className="w-1 h-4 rounded-full bg-blue-400 flex-shrink-0" />
+              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-widest">{s.heading}</span>
             </div>
-            <p className="px-5 py-4 text-[15px] text-[#1C1C1E] leading-[1.85] whitespace-pre-line font-medium">{s.body}</p>
+            <div className="px-5 py-5">
+              <p className="text-[15px] text-zinc-800 leading-[1.9] whitespace-pre-line font-medium">{s.body}</p>
+            </div>
           </div>
         );
         if (s.type === "answer") return (
-          <div key={i} className="rounded-[16px] overflow-hidden border border-[#E5E5EA] bg-white">
-            <div className="px-5 py-2.5 border-b border-[#F2F2F7] bg-[#F9F9FB]">
-              <span className="text-[11px] font-bold text-[#636366] uppercase tracking-widest">해설 및 모범답안</span>
+          <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
+            <div className="px-5 py-3 border-b border-zinc-100 bg-zinc-50 flex items-center gap-2">
+              <div className="w-1 h-4 rounded-full bg-zinc-300 flex-shrink-0" />
+              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">해설 및 모범답안</span>
             </div>
-            <p className="px-5 py-4 text-[15px] text-[#1C1C1E] leading-[1.85] whitespace-pre-line">{s.body}</p>
+            <div className="px-5 py-5">
+              <p className="text-[15px] text-zinc-700 leading-[1.9] whitespace-pre-line">{s.body}</p>
+            </div>
           </div>
         );
         if (s.type === "precedent") return (
-          <div key={i} className="rounded-[16px] overflow-hidden border border-[#E5E5EA] bg-[#F9F9FB]">
-            <div className="px-5 py-2.5 border-b border-[#E5E5EA]">
-              <span className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-widest">모델 판례</span>
+          <div key={i} className="rounded-xl border border-zinc-100 bg-zinc-50/80 overflow-hidden">
+            <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
+              <div className="w-1 h-4 rounded-full bg-zinc-200 flex-shrink-0" />
+              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">모델 판례</span>
             </div>
-            <p className="px-5 py-4 text-[14px] text-[#3A3A3C] leading-[1.85] whitespace-pre-line">{s.body}</p>
+            <div className="px-5 py-5">
+              <p className="text-[14px] text-zinc-500 leading-[1.9] whitespace-pre-line">{s.body}</p>
+            </div>
           </div>
         );
         return s.body.trim() ? (
           <div key={i} className="px-1">
-            {s.heading && <p className="text-[13px] font-semibold text-[#1C1C1E] mb-1">{s.heading}</p>}
-            <p className="text-[15px] text-[#3A3A3C] leading-[1.85] whitespace-pre-line">{s.body}</p>
+            {s.heading && <p className="text-[12px] font-semibold text-zinc-500 mb-1">{s.heading}</p>}
+            <p className="text-[15px] text-zinc-700 leading-[1.9] whitespace-pre-line">{s.body}</p>
           </div>
         ) : null;
       })}
@@ -171,7 +170,8 @@ function GeneratedContent({ content }: { content: string }) {
   );
 }
 
-function CommentsSection({ postId }: { postId: string }) {
+/* ── 댓글 ── */
+function Comments({ postId }: { postId: string }) {
   const { user } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState("");
@@ -179,10 +179,9 @@ function CommentsSection({ postId }: { postId: string }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc"));
-    getDocs(q)
-      .then((snap) => {
-        setComments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Comment)));
+    getDocs(query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc")))
+      .then(snap => {
+        setComments(snap.docs.map(d => ({ id: d.id, ...d.data() } as Comment)));
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -194,12 +193,9 @@ function CommentsSection({ postId }: { postId: string }) {
     try {
       const name = user.displayName || user.email?.split("@")[0] || "익명";
       const ref = await addDoc(collection(db, "posts", postId, "comments"), {
-        userId: user.uid,
-        userName: name,
-        text: text.trim(),
-        createdAt: serverTimestamp(),
+        userId: user.uid, userName: name, text: text.trim(), createdAt: serverTimestamp(),
       });
-      setComments((p) => [...p, { id: ref.id, userId: user.uid, userName: name, text: text.trim(), createdAt: null }]);
+      setComments(p => [...p, { id: ref.id, userId: user.uid, userName: name, text: text.trim(), createdAt: null }]);
       setText("");
     } finally {
       setSubmitting(false);
@@ -207,69 +203,64 @@ function CommentsSection({ postId }: { postId: string }) {
   };
 
   return (
-    <div className="pt-6 mt-6 border-t border-[#F2F2F7]">
-      <p className="text-[13px] font-semibold text-[#8E8E93] mb-4">
+    <div className="mt-8 pt-7 border-t border-zinc-100">
+      <p className="text-[13px] font-semibold text-zinc-900 mb-5">
         댓글{comments.length > 0 ? ` ${comments.length}` : ""}
       </p>
 
-      {loading ? (
-        <div className="h-6 flex items-center mb-4">
-          <ArrowPathIcon className="w-4 h-4 text-[#C7C7CC] animate-spin" />
-        </div>
-      ) : comments.length === 0 ? (
-        <p className="text-[13px] text-[#C7C7CC] mb-4">첫 댓글을 남겨보세요.</p>
-      ) : (
-        <div className="space-y-4 mb-5">
-          {comments.map((c) => (
+      {!loading && comments.length > 0 && (
+        <div className="space-y-5 mb-6">
+          {comments.map(c => (
             <div key={c.id} className="flex gap-3">
-              <div className="w-7 h-7 rounded-full bg-[#E5E5EA] flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-[11px] font-semibold text-[#8E8E93]">
-                  {c.userName.charAt(0).toUpperCase()}
-                </span>
+              <div className="w-7 h-7 rounded-full bg-zinc-100 flex items-center justify-center flex-shrink-0 text-[11px] font-semibold text-zinc-500">
+                {c.userName.charAt(0).toUpperCase()}
               </div>
-              <div>
-                <p className="text-[12px] font-semibold text-[#636366] mb-0.5">{c.userName}</p>
-                <p className="text-[14px] text-[#1C1C1E] leading-snug">{c.text}</p>
+              <div className="pt-0.5">
+                <span className="text-[12px] font-medium text-zinc-500">{c.userName}</span>
+                <p className="text-[14px] text-zinc-700 leading-snug mt-0.5">{c.text}</p>
               </div>
             </div>
           ))}
         </div>
       )}
 
+      {!loading && comments.length === 0 && (
+        <p className="text-[13px] text-zinc-300 mb-5">첫 댓글을 남겨보세요.</p>
+      )}
+
       {user ? (
         <div className="flex gap-2">
           <input
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && submit()}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && !e.shiftKey && submit()}
             placeholder="댓글 남기기…"
-            className="flex-1 bg-[#F2F2F7] rounded-full px-4 py-2.5 text-[14px] text-[#1C1C1E] placeholder-[#C7C7CC] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/20 focus:bg-white transition-all"
+            className="flex-1 h-9 bg-zinc-50 border border-zinc-200 rounded-lg px-3 text-[14px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
           />
           <button
             onClick={submit}
             disabled={!text.trim() || submitting}
-            className="text-[14px] font-semibold text-[#007AFF] disabled:text-[#C7C7CC] px-3 transition-colors active:opacity-60"
+            className="text-[13px] font-medium text-zinc-400 hover:text-zinc-700 disabled:text-zinc-200 px-2 transition-colors"
           >
             등록
           </button>
         </div>
       ) : (
-        <p className="text-[13px] text-[#C7C7CC]">댓글을 남기려면 로그인하세요.</p>
+        <p className="text-[13px] text-zinc-400">댓글을 남기려면 로그인하세요.</p>
       )}
     </div>
   );
 }
 
-/* ─── Main Page ─── */
-
+/* ── 메인 페이지 ── */
 export default function Home() {
   const { user } = useAuth();
   const router = useRouter();
 
   const [step, setStep] = useState<Step>("input");
-  const [caseNumberInput, setCaseNumberInput] = useState("");
+  const [input, setInput] = useState("");
   const [caseData, setCaseData] = useState<CaseData | null>(null);
-  const [generatedText, setGeneratedText] = useState("");
+  const [generated, setGenerated] = useState("");
   const [loadingCase, setLoadingCase] = useState(false);
   const [loadingGen, setLoadingGen] = useState(false);
   const [error, setError] = useState("");
@@ -278,22 +269,18 @@ export default function Home() {
   const [postId, setPostId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (router.isReady && typeof router.query.case === "string") {
-      setCaseNumberInput(router.query.case);
-    }
+    if (router.isReady && typeof router.query.case === "string") setInput(router.query.case);
   }, [router.isReady, router.query.case]);
 
-  const handleLookup = async () => {
-    const num = caseNumberInput.trim();
+  const lookup = async () => {
+    const num = input.trim();
     if (!num) return;
-    setError("");
-    setLoadingCase(true);
+    setError(""); setLoadingCase(true);
     try {
       const res = await fetch(`/api/case-lookup?caseNumber=${encodeURIComponent(num)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "판례 조회 실패");
-      setCaseData(data);
-      setStep("preview");
+      setCaseData(data); setStep("preview");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "조회 중 오류가 발생했습니다.");
     } finally {
@@ -301,11 +288,9 @@ export default function Home() {
     }
   };
 
-  const handleGenerate = async () => {
+  const generate = async () => {
     if (!caseData) return;
-    setError("");
-    setLoadingGen(true);
-    setStep("generating");
+    setError(""); setLoadingGen(true); setStep("generating");
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -314,8 +299,7 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "문제 생성 실패");
-      setGeneratedText(data.result);
-      setStep("done");
+      setGenerated(data.result); setStep("done");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "문제 생성 중 오류가 발생했습니다.");
       setStep("preview");
@@ -324,9 +308,9 @@ export default function Home() {
     }
   };
 
-  const handleSave = async () => {
+  const save = async () => {
     if (!user) { setError("로그인이 필요한 기능입니다."); return; }
-    if (!caseData || !generatedText) return;
+    if (!caseData || !generated) return;
     setSaving(true);
     try {
       const ref = await addDoc(collection(db, "posts"), {
@@ -338,13 +322,11 @@ export default function Home() {
         date: caseData.date,
         rulingPoints: caseData.rulingPoints,
         rulingRatio: caseData.rulingRatio,
-        content: generatedText,
-        likes: 0,
-        needsReview: 0,
+        content: generated,
+        likes: 0, needsReview: 0,
         createdAt: serverTimestamp(),
       });
-      setPostId(ref.id);
-      setSaved(true);
+      setPostId(ref.id); setSaved(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "저장 중 오류가 발생했습니다.");
     } finally {
@@ -352,148 +334,147 @@ export default function Home() {
     }
   };
 
-  const handleReset = () => {
-    setStep("input");
-    setCaseData(null);
-    setGeneratedText("");
-    setError("");
-    setSaved(false);
-    setPostId(null);
-    setCaseNumberInput("");
+  const reset = () => {
+    setStep("input"); setCaseData(null); setGenerated(""); setError("");
+    setSaved(false); setPostId(null); setInput("");
   };
 
   return (
     <Layout title="Case Generator">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-[640px] mx-auto">
 
-        {/* Hero */}
-        <div className="pt-10 pb-7 text-center">
-          <h1 className="text-[26px] font-bold text-[#1C1C1E] tracking-tight mb-1.5">
-            Case Generator
-          </h1>
-          <p className="text-[15px] text-[#8E8E93]">
-            사건번호로 변시 사례형 문제를 생성합니다.
-          </p>
+        {/* 헤더 텍스트 */}
+        <div className="pt-12 pb-8 text-center">
+          <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 mb-1.5">Case Generator</h1>
+          <p className="text-[14px] text-zinc-400">사건번호로 변시 사례형 문제를 생성합니다</p>
         </div>
 
-        {/* Error */}
+        {/* 에러 */}
         {error && (
-          <div className="mb-4 rounded-[14px] bg-[#FF3B30]/8 border border-[#FF3B30]/15 px-4 py-3 text-[13px] text-[#FF3B30]">
+          <div className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-[13px] text-red-500">
             {error}
           </div>
         )}
 
-        {/* Main Card */}
-        <div className="card">
+        {/* ── 입력 ── */}
+        {step === "input" && (
+          <div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && lookup()}
+                placeholder="사건번호 입력  예) 2016다271226"
+                className="flex-1 h-[52px] bg-white border border-zinc-200 rounded-xl px-4 text-[15px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-colors"
+                disabled={loadingCase}
+                autoFocus
+              />
+              <button
+                onClick={lookup}
+                disabled={!input.trim() || loadingCase}
+                className="h-[52px] px-5 bg-zinc-900 text-white rounded-xl text-[14px] font-semibold hover:bg-zinc-700 transition-colors disabled:opacity-40 flex-shrink-0 min-w-[72px] flex items-center justify-center gap-2"
+              >
+                {loadingCase
+                  ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : "조회"}
+              </button>
+            </div>
 
-          {/* Input */}
-          {step === "input" && (
-            <div className="p-6 sm:p-8">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={caseNumberInput}
-                  onChange={(e) => setCaseNumberInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleLookup()}
-                  placeholder="사건번호  예) 2016다271226"
-                  className="input-field h-[52px]"
-                  disabled={loadingCase}
-                  autoFocus
-                />
-                <button
-                  onClick={handleLookup}
-                  disabled={!caseNumberInput.trim() || loadingCase}
-                  className="px-5 h-[52px] rounded-[12px] bg-[#007AFF] text-white font-semibold text-[15px] disabled:opacity-40 transition-all active:scale-95 hover:bg-[#0062cc] flex items-center gap-2 flex-shrink-0 min-w-[72px] justify-center"
-                >
-                  {loadingCase
-                    ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                    : "조회"}
-                </button>
-              </div>
-              <div className="mt-5 flex flex-wrap gap-2">
-                {SUGGESTED.map((num) => (
+            <div className="mt-4 flex items-center gap-4">
+              <span className="text-[11px] font-semibold text-zinc-300 uppercase tracking-widest">추천</span>
+              <div className="flex gap-3 flex-wrap">
+                {SUGGESTED.map(n => (
                   <button
-                    key={num}
-                    onClick={() => setCaseNumberInput(num)}
-                    className="text-[12px] px-3 py-1.5 bg-[#F2F2F7] rounded-full text-[#8E8E93] hover:bg-[#E5E5EA] hover:text-[#636366] transition-colors font-mono"
+                    key={n}
+                    onClick={() => setInput(n)}
+                    className="text-[12px] font-mono text-zinc-400 hover:text-zinc-700 transition-colors"
                   >
-                    {num}
+                    {n}
                   </button>
                 ))}
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Preview */}
-          {step === "preview" && caseData && (
-            <div className="p-6 sm:p-8">
-              <CaseInfoCard data={caseData} onReset={handleReset} />
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={handleGenerate}
-                  className="px-6 py-3 rounded-full bg-[#007AFF] text-white font-semibold text-[15px] hover:bg-[#0062cc] transition-all active:scale-95 flex items-center gap-2"
-                >
-                  <SparklesIcon className="w-4 h-4" />
-                  문제 생성하기
-                </button>
-              </div>
+        {/* ── 판례 확인 ── */}
+        {step === "preview" && caseData && (
+          <div>
+            <CaseCard data={caseData} onReset={reset} />
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={generate}
+                className="h-10 px-5 bg-zinc-900 text-white rounded-xl text-[14px] font-semibold hover:bg-zinc-700 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+                문제 생성하기
+              </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Generating */}
-          {step === "generating" && (
-            <div className="p-12 flex flex-col items-center justify-center text-center min-h-[240px]">
-              <div className="w-14 h-14 rounded-full bg-[#007AFF]/8 flex items-center justify-center mb-5">
-                <ArrowPathIcon className="w-6 h-6 text-[#007AFF] animate-spin" />
-              </div>
-              <p className="text-[17px] font-semibold text-[#1C1C1E] mb-1">문제를 만들고 있어요</p>
-              <p className="text-[14px] text-[#8E8E93]">잠시만 기다려 주세요</p>
-            </div>
-          )}
+        {/* ── 생성 중 ── */}
+        {step === "generating" && (
+          <div className="py-20 flex flex-col items-center justify-center text-center">
+            <div className="w-8 h-8 border-2 border-zinc-200 border-t-zinc-700 rounded-full animate-spin mb-6" />
+            <p className="text-[16px] font-semibold text-zinc-900 mb-1">문제를 만들고 있어요</p>
+            <p className="text-[13px] text-zinc-400">판례를 분석하고 있습니다. 잠시만 기다려 주세요.</p>
+          </div>
+        )}
 
-          {/* Done */}
-          {step === "done" && generatedText && (
-            <div className="p-6 sm:p-8">
-              <GeneratedContent content={generatedText} />
+        {/* ── 완료 ── */}
+        {step === "done" && generated && (
+          <div>
+            <GeneratedContent content={generated} />
 
-              <div className="mt-6 pt-5 border-t border-[#F2F2F7] flex items-center justify-between gap-3">
+            {/* 액션 바 */}
+            <div className="mt-8 pt-6 border-t border-zinc-100 flex items-center justify-between">
+              <button
+                onClick={reset}
+                className="text-[13px] text-zinc-400 hover:text-zinc-700 transition-colors"
+              >
+                ← 새 문제
+              </button>
+              <div className="flex items-center gap-3">
                 <button
-                  onClick={handleReset}
-                  className="text-[14px] text-[#8E8E93] hover:text-[#1C1C1E] transition-colors"
+                  onClick={generate}
+                  className="h-8 px-3.5 text-[13px] text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors flex items-center gap-1.5"
                 >
-                  새 문제
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  다시 생성
                 </button>
-                <div className="flex items-center gap-2">
+                <div className="w-px h-4 bg-zinc-200" />
+                {saved ? (
+                  <div className="flex items-center gap-1.5 text-[13px] font-medium text-emerald-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    공유됨
+                  </div>
+                ) : (
                   <button
-                    onClick={handleGenerate}
-                    className="px-4 py-2 rounded-full bg-[#F2F2F7] text-[#636366] font-medium text-[14px] hover:bg-[#E5E5EA] transition-all active:scale-95 flex items-center gap-1.5"
+                    onClick={save}
+                    disabled={saving}
+                    className="h-8 px-3.5 bg-zinc-900 text-white text-[13px] font-medium rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
                   >
-                    <ArrowPathIcon className="w-3.5 h-3.5" />
-                    다시 생성
+                    {saving
+                      ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      : "공유하기"}
                   </button>
-                  {saved ? (
-                    <div className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#34C759]/10 text-[#34C759] text-[14px] font-semibold">
-                      <CheckCircleIcon className="w-4 h-4" />
-                      공유됨
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="px-4 py-2 rounded-full bg-[#1C1C1E] text-white font-semibold text-[14px] hover:bg-[#3A3A3C] transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
-                    >
-                      {saving ? <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" /> : "공유하기"}
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
-
-              {saved && postId && <CommentsSection postId={postId} />}
             </div>
-          )}
-        </div>
 
-        <div className="h-16" />
+            {saved && postId && <Comments postId={postId} />}
+          </div>
+        )}
+
+        <div className="h-20" />
       </div>
     </Layout>
   );
