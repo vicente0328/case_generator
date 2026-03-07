@@ -311,6 +311,32 @@ function Comments({ postId }: { postId: string }) {
   );
 }
 
+/* ── 판례 원문 ── */
+function FullTextSection({ fullText }: { fullText: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-4 rounded-xl border border-zinc-100 overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full px-6 py-4 flex items-center justify-between bg-zinc-50 hover:bg-zinc-100 transition-colors"
+      >
+        <span className="text-[13px] font-semibold text-zinc-500">판례 원문 보기</span>
+        <svg
+          className={`w-4 h-4 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="px-6 py-6 bg-white border-t border-zinc-100">
+          <p className="text-[13px] text-zinc-600 leading-[1.9] whitespace-pre-wrap font-mono">{fullText}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── 메인 페이지 ── */
 export default function Home() {
   const { user } = useAuth();
@@ -332,6 +358,7 @@ export default function Home() {
   const [displayCount, setDisplayCount] = useState(10);
   const [feedLoading, setFeedLoading] = useState(true);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([false, false, false, false, false]);
+  const [showAlmostDone, setShowAlmostDone] = useState(false);
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
@@ -352,12 +379,15 @@ export default function Home() {
   useEffect(() => {
     if (step !== "generating") {
       setCheckedSteps([false, false, false, false, false]);
+      setShowAlmostDone(false);
       return;
     }
     const timers = STEP_DELAYS.map((delay, i) =>
       setTimeout(() => setCheckedSteps(prev => prev.map((v, j) => j <= i ? true : v)), delay)
     );
-    return () => timers.forEach(clearTimeout);
+    // 마지막 단계 체크(13s) 후 4초 더 지나도 완료 안 되면 안내 메시지 표시
+    const almostDoneTimer = setTimeout(() => setShowAlmostDone(true), 17000);
+    return () => { timers.forEach(clearTimeout); clearTimeout(almostDoneTimer); };
   }, [step]);
 
   useEffect(() => {
@@ -776,6 +806,9 @@ export default function Home() {
         {step === "preview" && caseData && (
           <div>
             <CaseCard data={caseData} onReset={reset} />
+            <p className="mt-3 text-[12px] text-zinc-400 text-right px-1">
+              판결요지를 확인하신 후 요청하신 판례가 맞다면 문제를 생성해 주세요.
+            </p>
 
             {existingPost ? (
               /* 기존 문제 있음 → 선택지 제시 */
@@ -836,6 +869,11 @@ export default function Home() {
                     </span>
                   </div>
                 ))}
+                {showAlmostDone && (
+                  <p className="text-[12px] text-zinc-400 pt-1 pl-6">
+                    잠시만 기다려 주세요. 거의 다 완성되었습니다.
+                  </p>
+                )}
               </div>
             </div>
           <div className="space-y-4 animate-pulse">
@@ -885,6 +923,8 @@ export default function Home() {
         {step === "done" && generated && (
           <div>
             <GeneratedContent content={generated} />
+
+            {caseData?.fullText && <FullTextSection fullText={caseData.fullText} />}
 
             {/* 액션 바 */}
             <div className="mt-8 pt-6 border-t border-zinc-100 flex items-center justify-between">
