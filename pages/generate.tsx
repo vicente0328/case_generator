@@ -18,8 +18,6 @@ import {
 type Step = "input" | "preview" | "generating" | "done";
 
 function CaseInfoCard({ data }: { data: CaseData }) {
-  const [rulingExpanded, setRulingExpanded] = useState(true);
-
   return (
     <div className="bg-white rounded-[20px] border border-[#E5E5EA] overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
@@ -67,31 +65,17 @@ function CaseInfoCard({ data }: { data: CaseData }) {
           </div>
         )}
 
-        {/* 판결요지 (접기/펼치기) */}
-        {data.rulingRatio && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[12px] font-semibold text-[#9A6D1F] uppercase tracking-wide">판결요지</p>
-              <button
-                onClick={() => setRulingExpanded((v) => !v)}
-                className="text-[12px] text-[#8E8E93] hover:text-[#1C1C1E] transition-colors"
-              >
-                {rulingExpanded ? "접기 ↑" : "펼치기 ↓"}
-              </button>
-            </div>
-            <div className={`relative bg-[#FFF8E6] border border-[#FFE0A2]/40 rounded-[14px] p-4 overflow-hidden transition-all duration-300 ${rulingExpanded ? "" : "max-h-[96px]"}`}>
+        {/* 판결요지 */}
+        <div>
+          <p className="text-[12px] font-semibold text-[#9A6D1F] uppercase tracking-wide mb-2">판결요지</p>
+          {data.rulingRatio ? (
+            <div className="bg-[#FFF8E6] border border-[#FFE0A2]/40 rounded-[14px] p-4">
               <p className="text-[14px] text-[#3A3A3C] leading-[1.75] whitespace-pre-line">{data.rulingRatio}</p>
-              {!rulingExpanded && (
-                <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#FFF8E6] to-transparent pointer-events-none" />
-              )}
             </div>
-            {!rulingExpanded && data.rulingRatio.length > 150 && (
-              <button onClick={() => setRulingExpanded(true)} className="mt-1.5 text-[12px] text-[#007AFF] hover:underline">
-                전체 보기
-              </button>
-            )}
-          </div>
-        )}
+          ) : (
+            <p className="text-[13px] text-[#C7C7CC] italic">판결요지 정보 없음</p>
+          )}
+        </div>
       </div>
     </div>
   );
