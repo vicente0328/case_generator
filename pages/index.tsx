@@ -2,9 +2,20 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/lib/contexts/AuthContext";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, where } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, where, deleteDoc } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
+
+const ADMIN_EMAIL = "admin@casegenerator.com";
+
+async function adminFetch(method: string, path: string, body?: object) {
+  const token = await auth.currentUser?.getIdToken();
+  return fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+}
 
 type Step = "input" | "preview" | "generating" | "done";
 
@@ -229,6 +240,7 @@ function GeneratedContent({ content }: { content: string }) {
 /* ── 댓글 ── */
 function Comments({ postId }: { postId: string }) {
   const { user } = useAuth();
+  const isAdmin = user?.email === ADMIN_EMAIL;
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -263,9 +275,13 @@ function Comments({ postId }: { postId: string }) {
   };
 
   const deleteComment = async (c: Comment) => {
-    if (!user || user.uid !== c.userId) return;
+    if (!user || (user.uid !== c.userId && !isAdmin)) return;
     try {
-      await updateDoc(doc(db, "posts", postId, "comments", c.id), { deleted: true, text: "" });
+      if (isAdmin && user.uid !== c.userId) {
+        await adminFetch("DELETE", `/api/admin/comment?postId=${postId}&commentId=${c.id}`);
+      } else {
+        await updateDoc(doc(db, "posts", postId, "comments", c.id), { deleted: true, text: "" });
+      }
       setComments(p => p.map(x => x.id === c.id ? { ...x, deleted: true, text: "" } : x));
     } catch (e) {
       setError(e instanceof Error ? e.message : "삭제에 실패했습니다.");
@@ -294,7 +310,7 @@ function Comments({ postId }: { postId: string }) {
                   <>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[12px] font-medium text-zinc-500">{c.userName}</span>
-                      {user && user.uid === c.userId && (
+                      {user && (user.uid === c.userId || isAdmin) && (
                         <button
                           onClick={() => deleteComment(c)}
                           className="text-[11px] text-zinc-300 hover:text-red-400 transition-colors"
@@ -441,6 +457,7 @@ function getAnonName(): string {
 export default function Home() {
   const { user } = useAuth();
   const router = useRouter();
+  const isAdmin = user?.email === ADMIN_EMAIL;
 
   const [activeTab, setActiveTab] = useState<LawArea>("민사법");
   const [step, setStep] = useState<Step>("input");
@@ -738,6 +755,18 @@ export default function Home() {
     } catch (e) { console.error("viewPost failed:", e); }
   };
 
+  const adminDeletePost = async (id: string) => {
+    if (!window.confirm("이 게시물을 삭제하시겠습니까?")) return;
+    await adminFetch("DELETE", `/api/admin/post?id=${id}`);
+    setFeedPosts(prev => prev.filter(p => p.id !== id));
+    if (postId === id) reset();
+  };
+
+  const adminReclassify = async (id: string, lawArea: LawArea) => {
+    await adminFetch("PATCH", `/api/admin/post?id=${id}`, { lawArea });
+    setFeedPosts(prev => prev.map(p => p.id === id ? { ...p, lawArea } : p));
+  };
+
   const reset = () => {
     prefetchAbortRef.current?.abort();
     prefetchRef.current = null;
@@ -908,25 +937,45 @@ export default function Home() {
                   <>
                     <div className="space-y-2">
                       {visible.map(post => (
-                        <button
-                          key={post.id}
-                          onClick={() => viewPost(post)}
-                          className="w-full bg-white rounded-xl border border-zinc-100 px-5 py-4 text-left hover:border-zinc-300 transition-colors"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-[14px] font-mono font-semibold text-zinc-800 truncate">{post.caseNumber}</p>
-                              <p className="text-[12px] text-zinc-400 mt-0.5 truncate">
-                                {[post.court, post.date && formatDate(post.date), post.caseName].filter(Boolean).join(" · ")}
-                              </p>
+                        <div key={post.id} className="bg-white rounded-xl border border-zinc-100 hover:border-zinc-300 transition-colors">
+                          <button
+                            onClick={() => viewPost(post)}
+                            className="w-full px-5 py-4 text-left"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-[14px] font-mono font-semibold text-zinc-800 truncate">{post.caseNumber}</p>
+                                <p className="text-[12px] text-zinc-400 mt-0.5 truncate">
+                                  {[post.court, post.date && formatDate(post.date), post.caseName].filter(Boolean).join(" · ")}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3 text-[12px] text-zinc-400 flex-shrink-0">
+                                <span>추천 {post.likes}</span>
+                                <span className="text-zinc-200">·</span>
+                                <span className="max-w-[60px] truncate">{post.userName}</span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3 text-[12px] text-zinc-400 flex-shrink-0">
-                              <span>추천 {post.likes}</span>
-                              <span className="text-zinc-200">·</span>
-                              <span className="max-w-[60px] truncate">{post.userName}</span>
+                          </button>
+                          {isAdmin && (
+                            <div className="px-5 pb-3 flex items-center gap-3 border-t border-zinc-50 pt-2">
+                              <select
+                                value={post.lawArea ?? classifyLawArea(post.caseNumber)}
+                                onChange={e => adminReclassify(post.id, e.target.value as LawArea)}
+                                className="text-[11px] text-zinc-500 bg-zinc-50 border border-zinc-200 rounded px-1.5 py-0.5"
+                              >
+                                <option value="민사법">민사법</option>
+                                <option value="공법">공법</option>
+                                <option value="형사법">형사법</option>
+                              </select>
+                              <button
+                                onClick={() => adminDeletePost(post.id)}
+                                className="text-[11px] text-red-400 hover:text-red-600 transition-colors"
+                              >
+                                삭제
+                              </button>
                             </div>
-                          </div>
-                        </button>
+                          )}
+                        </div>
                       ))}
                     </div>
                     {filtered.length > displayCount && (
@@ -1070,12 +1119,22 @@ export default function Home() {
 
             {/* 액션 바 */}
             <div className="mt-8 pt-6 border-t border-zinc-100 flex items-center justify-between">
-              <button
-                onClick={reset}
-                className="text-[13px] text-zinc-400 hover:text-zinc-700 transition-colors"
-              >
-                ← 새 문제
-              </button>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={reset}
+                  className="text-[13px] text-zinc-400 hover:text-zinc-700 transition-colors"
+                >
+                  ← 새 문제
+                </button>
+                {isAdmin && postId && (
+                  <button
+                    onClick={() => adminDeletePost(postId)}
+                    className="text-[13px] text-red-400 hover:text-red-600 transition-colors"
+                  >
+                    게시물 삭제
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => generate(true)}
