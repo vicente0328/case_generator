@@ -451,6 +451,7 @@ export default function Home() {
         date: caseData.date || "",
         rulingPoints: caseData.rulingPoints || "",
         rulingRatio: caseData.rulingRatio || "",
+        fullText: caseData.fullText?.slice(0, 8000) || "",
         content: generated,
         likes: 0, needsReview: 0,
         createdAt: serverTimestamp(),
@@ -664,6 +665,7 @@ export default function Home() {
         date: data.date,
         rulingPoints: data.rulingPoints,
         rulingRatio: data.rulingRatio,
+        fullText: data.fullText || "",
       } as CaseData);
       setGenerated(data.content);
       setPostId(post.id);
@@ -689,6 +691,23 @@ export default function Home() {
           <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 mb-1.5">Case Generator</h1>
           <p className="text-[14px] text-zinc-400">사건번호로 변시 사례형 문제를 생성합니다</p>
         </div>
+
+        {/* 법역 탭 */}
+        <div className="flex gap-1 mb-6 bg-white border border-zinc-100 rounded-xl p-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <button className="flex-1 py-2 text-[13px] font-semibold text-zinc-900 bg-zinc-100 rounded-lg transition-colors">
+            민사법
+          </button>
+          <button disabled className="flex-1 py-2 text-[13px] font-medium text-zinc-300 rounded-lg cursor-not-allowed">
+            공법 <span className="text-[11px]">준비중</span>
+          </button>
+          <button disabled className="flex-1 py-2 text-[13px] font-medium text-zinc-300 rounded-lg cursor-not-allowed">
+            형사법 <span className="text-[11px]">준비중</span>
+          </button>
+        </div>
+
+        <p className="mb-5 text-[12px] text-zinc-400 text-center">
+          현재는 민사 판례만 지원됩니다. 공법 및 형사 판례도 곧 출시될 예정입니다.
+        </p>
 
         {/* 에러 */}
         {error && (
@@ -846,10 +865,10 @@ export default function Home() {
         {/* ── 판례 확인 ── */}
         {step === "preview" && caseData && (
           <div>
-            <CaseCard data={caseData} onReset={reset} />
-            <p className="mt-3 text-[12px] text-zinc-400 text-right px-1">
-              판결요지를 확인하신 후 요청하신 판례가 맞다면 문제를 생성해 주세요.
+            <p className="mb-3 text-[13px] text-zinc-400 px-1">
+              판결요지를 확인하신 후 요청하신 판례가 맞다면 하단에 있는 &quot;문제 생성하기&quot; 버튼을 눌러주세요.
             </p>
+            <CaseCard data={caseData} onReset={reset} />
 
             {existingPost ? (
               /* 기존 문제 있음 → 선택지 제시 */

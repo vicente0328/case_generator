@@ -7,7 +7,6 @@ interface AuthModalProps {
 
 export default function AuthModal({ onClose }: AuthModalProps) {
   const { signIn, signUp, signInWithGoogle } = useAuth();
-  const [showEmail, setShowEmail] = useState(false);
   const [tab, setTab] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -97,89 +96,77 @@ export default function AuthModal({ onClose }: AuthModalProps) {
             Google로 계속하기
           </button>
 
-          {/* 이메일 로그인 토글 */}
+          {/* 구분선 */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-zinc-100" />
             </div>
             <div className="relative flex justify-center">
-              <button
-                onClick={() => { setShowEmail(v => !v); setError(""); }}
-                className="px-3 bg-white text-[12px] text-zinc-400 hover:text-zinc-600 transition-colors"
-              >
-                {showEmail ? "접기" : "이메일로 계속하기"}
-              </button>
+              <span className="px-3 bg-white text-[12px] text-zinc-300">또는</span>
             </div>
           </div>
 
           {/* 이메일 폼 */}
-          {showEmail && (
-            <div>
-              {/* 탭 */}
-              <div className="flex bg-zinc-100 p-0.5 rounded-lg mb-4">
-                {(["login", "signup"] as const).map(t => (
-                  <button
-                    key={t}
-                    onClick={() => { setTab(t); setError(""); }}
-                    className={`flex-1 py-1.5 text-[13px] font-medium rounded-md transition-all ${
-                      tab === t
-                        ? "bg-white text-zinc-900 shadow-sm"
-                        : "text-zinc-400 hover:text-zinc-600"
-                    }`}
-                  >
-                    {t === "login" ? "로그인" : "회원가입"}
-                  </button>
-                ))}
-              </div>
-
-              <form onSubmit={handleEmail} className="space-y-2.5">
-                {tab === "signup" && (
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={e => setDisplayName(e.target.value)}
-                    placeholder="이름"
-                    className="w-full h-10 bg-zinc-50 border border-zinc-200 rounded-lg px-3 text-[14px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
-                    required
-                  />
-                )}
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="이메일"
-                  className="w-full h-10 bg-zinc-50 border border-zinc-200 rounded-lg px-3 text-[14px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
-                  required
-                />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="비밀번호 (6자 이상)"
-                  className="w-full h-10 bg-zinc-50 border border-zinc-200 rounded-lg px-3 text-[14px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
-                  required
-                  minLength={6}
-                />
-                {error && (
-                  <p className="text-[12px] text-red-500 px-1">{error}</p>
-                )}
+          <div>
+            {/* 탭 */}
+            <div className="flex bg-zinc-100 p-0.5 rounded-lg mb-4">
+              {(["login", "signup"] as const).map(t => (
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full h-10 bg-zinc-900 text-white rounded-lg text-[14px] font-semibold hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                  key={t}
+                  onClick={() => { setTab(t); setError(""); }}
+                  className={`flex-1 py-1.5 text-[13px] font-medium rounded-md transition-all ${
+                    tab === t
+                      ? "bg-white text-zinc-900 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-600"
+                  }`}
                 >
-                  {loading ? (
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto block" />
-                  ) : tab === "login" ? "로그인" : "회원가입"}
+                  {t === "login" ? "로그인" : "회원가입"}
                 </button>
-              </form>
+              ))}
             </div>
-          )}
 
-          {/* Google 로그인 에러 (이메일 폼이 열리지 않은 상태) */}
-          {error && !showEmail && (
-            <p className="text-[12px] text-red-500 px-1">{error}</p>
-          )}
+            <form onSubmit={handleEmail} className="space-y-2.5">
+              {tab === "signup" && (
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  placeholder="이름"
+                  className="w-full h-10 bg-zinc-50 border border-zinc-200 rounded-lg px-3 text-[14px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
+                  required
+                />
+              )}
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="이메일"
+                className="w-full h-10 bg-zinc-50 border border-zinc-200 rounded-lg px-3 text-[14px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
+                required
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="비밀번호 (6자 이상)"
+                className="w-full h-10 bg-zinc-50 border border-zinc-200 rounded-lg px-3 text-[14px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
+                required
+                minLength={6}
+              />
+              {error && (
+                <p className="text-[12px] text-red-500 px-1">{error}</p>
+              )}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full h-10 bg-zinc-900 text-white rounded-lg text-[14px] font-semibold hover:bg-zinc-700 transition-colors disabled:opacity-50"
+              >
+                {loading ? (
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto block" />
+                ) : tab === "login" ? "로그인" : "회원가입"}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
       <style>{`@keyframes modalIn { from { opacity:0; transform:scale(0.96) } to { opacity:1; transform:scale(1) } }`}</style>
