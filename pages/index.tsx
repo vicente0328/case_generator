@@ -827,14 +827,17 @@ export default function Home() {
       } as CaseData);
       setGenerated(data.content);
       setPostId(post.id);
-      // 현재 유저의 기존 투표 상태 복원
+      setVoted(null);
+      setStep("done"); // 네비게이션 먼저 — votes 읽기 실패와 무관하게 이동
+      // 기존 투표 상태 복원 (실패해도 네비게이션에 영향 없음)
       if (user) {
-        const voteSnap = await getDoc(doc(db, "posts", post.id, "votes", user.uid));
-        setVoted(voteSnap.exists() ? (voteSnap.data().field as "likes" | "needsReview") : null);
-      } else {
-        setVoted(null);
+        try {
+          const voteSnap = await getDoc(doc(db, "posts", post.id, "votes", user.uid));
+          setVoted(voteSnap.exists() ? (voteSnap.data().field as "likes" | "needsReview") : null);
+        } catch {
+          // 보안 규칙 미설정 등 — voted는 null 유지
+        }
       }
-      setStep("done");
     } catch (e) { console.error("viewPost failed:", e); }
   };
 
