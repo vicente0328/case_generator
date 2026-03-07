@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { auth, db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, where, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, where, deleteDoc, runTransaction, setDoc } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
 import AdminBatchGenerator, { type AppendPayload } from "@/components/AdminBatchGenerator";
 import AdminImportantCases from "@/components/AdminImportantCases";
@@ -774,16 +774,30 @@ export default function Home() {
   };
 
   const vote = async (field: "likes" | "needsReview") => {
-    if (!postId) return;
+    if (!postId || !user) return;
+    const voteRef = doc(db, "posts", postId, "votes", user.uid);
+    const postRef = doc(db, "posts", postId);
     try {
-      if (voted === field) {
-        await updateDoc(doc(db, "posts", postId), { [field]: increment(-1) });
-        setVoted(null);
-      } else {
-        if (voted) await updateDoc(doc(db, "posts", postId), { [voted]: increment(-1) });
-        await updateDoc(doc(db, "posts", postId), { [field]: increment(1) });
-        setVoted(field);
-      }
+      let nextVoted: "likes" | "needsReview" | null = null;
+      await runTransaction(db, async (tx) => {
+        const voteSnap = await tx.get(voteRef);
+        const existing = voteSnap.exists() ? (voteSnap.data().field as string) : null;
+        if (existing === field) {
+          // 같은 버튼 재클릭 → 취소
+          tx.delete(voteRef);
+          tx.update(postRef, { [field]: increment(-1) });
+          nextVoted = null;
+        } else {
+          if (existing) {
+            // 다른 버튼으로 전환 → 이전 것 차감
+            tx.update(postRef, { [existing]: increment(-1) });
+          }
+          tx.set(voteRef, { field });
+          tx.update(postRef, { [field]: increment(1) });
+          nextVoted = field;
+        }
+      });
+      setVoted(nextVoted);
     } catch (e) { console.error("vote failed:", e); }
   };
 
@@ -803,7 +817,13 @@ export default function Home() {
       } as CaseData);
       setGenerated(data.content);
       setPostId(post.id);
-      setVoted(null);
+      // 현재 유저의 기존 투표 상태 복원
+      if (user) {
+        const voteSnap = await getDoc(doc(db, "posts", post.id, "votes", user.uid));
+        setVoted(voteSnap.exists() ? (voteSnap.data().field as "likes" | "needsReview") : null);
+      } else {
+        setVoted(null);
+      }
       setStep("done");
     } catch (e) { console.error("viewPost failed:", e); }
   };
