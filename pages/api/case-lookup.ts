@@ -169,27 +169,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return data ? extractItems(data) : [];
     }
 
-    // 정규화된 번호로 먼저 시도, 0건이면 원본으로 재시도
-    let items = await searchByNb(normalized);
-    if (items.length === 0 && normalized !== trimmed) {
-      items = await searchByNb(trimmed);
+    // 사건번호 정확 매칭 헬퍼 — normalizeCase 기준 완전 일치만 허용
+    function matchExact(items: ApiRecord[]): ApiRecord | undefined {
+      return (
+        items.find((item) => normalizeCase(item["사건번호"] ?? "") === normalized) ||
+        items.find((item) => normalizeCase(item["사건번호"] ?? "") === normalizeCase(trimmed))
+      );
     }
 
-    if (items.length === 0) {
-      const year = parseInt(normalized.match(/^(\d{4})/)?.[1] ?? "0", 10);
-      const oldCase = year > 0 && year < 2000;
-      return res.status(404).json({
-        error: oldCase
-          ? `'${trimmed}'에 해당하는 판례를 찾지 못했습니다. 법제처 API에 수록되지 않은 오래된 판례일 수 있습니다.`
-          : `'${trimmed}'에 해당하는 판례를 찾지 못했습니다.`,
-      });
+    // nb 파라미터로 사건번호 직접 검색 (정규화 형태 → 원본 순서로 시도)
+    let found: ApiRecord | undefined;
+
+    const nbItems = await searchByNb(normalized);
+    found = matchExact(nbItems);
+
+    if (!found && normalized !== trimmed) {
+      const nbItems2 = await searchByNb(trimmed);
+      found = matchExact(nbItems2);
     }
 
-    // Step 2: 사건번호 정확 매칭 (양쪽 모두 정규화하여 비교)
-    // nb 검색 결과도 완전히 일치하는 것만 사용 — 부정확한 결과 방지
-    const found =
-      items.find((item) => normalizeCase(item["사건번호"] ?? "") === normalized) ||
-      items.find((item) => normalizeCase(item["사건번호"] ?? "") === normalizeCase(trimmed));
+    // nb 검색 실패 시 query 파라미터로 fallback (결과는 반드시 정확 매칭만 사용)
+    if (!found) {
+      const queryUrl = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc!)}&target=prec&type=JSON&query=${encodeURIComponent(normalized !== trimmed ? trimmed : normalized)}&display=30`;
+      let qData = await fetchJson(queryUrl);
+      if (!qData) qData = await fetchJson(queryUrl.replace("https://", "http://"));
+      if (qData) found = matchExact(extractItems(qData));
+    }
 
     if (!found) {
       const year = parseInt(normalized.match(/^(\d{4})/)?.[1] ?? "0", 10);
