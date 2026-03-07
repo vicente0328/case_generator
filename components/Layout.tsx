@@ -74,7 +74,7 @@ export default function Layout({ children, title = "Case Generator", onLogoClick
         <header className="sticky top-0 z-40 h-[52px] bg-white/90 backdrop-blur-xl border-b border-zinc-100 flex items-center">
           <div className="w-full max-w-[800px] mx-auto px-6 flex items-center justify-between">
             <Link href="/" onClick={onLogoClick} className="flex items-center gap-2 group">
-              <div className="w-[26px] h-[26px] bg-indigo-600 rounded-[7px] flex items-center justify-center flex-shrink-0">
+              <div className="w-[26px] h-[26px] bg-blue-900 rounded-[7px] flex items-center justify-center flex-shrink-0">
                 <span className="text-white text-[10px] font-bold tracking-tighter">CG</span>
               </div>
               <span className="font-semibold text-[14px] tracking-tight text-zinc-900">Case Generator</span>
@@ -102,7 +102,7 @@ export default function Layout({ children, title = "Case Generator", onLogoClick
               ) : (
                 <button
                   onClick={() => setShowAuth(true)}
-                  className="h-8 px-3.5 ml-1 bg-indigo-600 text-white text-[13px] font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                  className="h-8 px-3.5 ml-1 bg-blue-900 text-white text-[13px] font-medium rounded-lg hover:bg-blue-800 transition-colors"
                 >
                   로그인
                 </button>
