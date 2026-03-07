@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/contexts/AuthContext";
 import { auth, db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, where, deleteDoc } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
+import AdminBatchGenerator from "@/components/AdminBatchGenerator";
 
 const ADMIN_EMAIL = "admin@casegenerator.com";
 
@@ -113,6 +114,25 @@ function parseContent(text: string): Section[] {
   }
   flush();
   return sections.filter(s => s.body.trim() || s.heading);
+}
+
+/* ── PDF 내보내기용 HTML 렌더러 ── */
+function renderSectionsHtml(content: string): string {
+  const sections = parseContent(content);
+  return sections.map(s => {
+    if (s.type === "facts") {
+      const bullets = s.body.split("\n").flatMap(line => {
+        const t = line.trim();
+        if (!t) return [];
+        return t.split(/(?<=다\.)\s+/).map(x => x.trim()).filter(Boolean);
+      });
+      return `<div class="section"><div class="sh facts-sh">사실관계</div><div class="sb facts-sb"><ul class="bl">${bullets.map(b => `<li>${b}</li>`).join("")}</ul></div></div>`;
+    }
+    if (s.type === "question") return `<div class="section"><div class="sh q-sh">${s.heading}</div><div class="sb q-sb">${s.body.replace(/\n/g, "<br>")}</div></div>`;
+    if (s.type === "answer") return `<div class="section"><div class="sh ans-sh">해설 및 모범답안</div><div class="sb ans-sb">${s.body.replace(/\n/g, "<br>")}</div></div>`;
+    if (s.type === "precedent") return `<div class="section"><div class="sh prec-sh">모델 판례</div><div class="sb prec-sb">${s.body.replace(/\n/g, "<br>")}</div></div>`;
+    return s.body.trim() ? `<div class="other">${s.body.replace(/\n/g, "<br>")}</div>` : "";
+  }).join("");
 }
 
 /* ── 판례 확인 카드 ── */
@@ -477,6 +497,7 @@ export default function Home() {
   const [feedLoading, setFeedLoading] = useState(true);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([false, false, false, false, false]);
   const [showAlmostDone, setShowAlmostDone] = useState(false);
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
@@ -767,6 +788,63 @@ export default function Home() {
     setFeedPosts(prev => prev.map(p => p.id === id ? { ...p, lawArea } : p));
   };
 
+  const exportToPdf = async () => {
+    if (selectedPostIds.size === 0) return;
+    const ids = [...selectedPostIds];
+    type PostData = { id: string; lawArea?: string; caseNumber: string; court?: string; date?: string; caseName?: string; content?: string; rulingPoints?: string };
+    const posts = await Promise.all(
+      ids.map(id => getDoc(doc(db, "posts", id)).then(snap => ({ id: snap.id, ...snap.data() } as PostData)))
+    );
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>변시 사례형 문제</title><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Apple SD Gothic Neo','Nanum Gothic','맑은 고딕',sans-serif;font-size:10.5pt;color:#1a1a1a;background:#fff;line-height:1.6}
+.post{padding:32px 40px;page-break-after:always}
+.post:last-child{page-break-after:auto}
+.ph{margin-bottom:18px;padding-bottom:14px;border-bottom:2.5px solid #1e3a8a}
+.badge{display:inline-block;font-size:8pt;font-weight:700;padding:2px 8px;border-radius:4px;margin-bottom:8px}
+.bc{background:#dbeafe;color:#1d4ed8}.ba{background:#dcfce7;color:#15803d}.bk{background:#fef3c7;color:#b45309}
+.cn{font-size:17pt;font-weight:800;font-family:'Courier New',monospace;color:#1e3a8a;letter-spacing:.02em}
+.meta{font-size:9pt;color:#6b7280;margin-top:4px}
+.section{margin-bottom:13px;border-radius:6px;overflow:hidden;border:1px solid #f0f0f0}
+.sh{padding:8px 14px;font-size:8.5pt;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.sb{padding:12px 14px;font-size:10.5pt;line-height:1.85}
+.facts-sh{background:#fffbeb;color:#92400e;border-left:3px solid #f59e0b}
+.facts-sb{background:#fffdf5}
+.bl{list-style:none}.bl li{display:flex;gap:8px;margin-bottom:6px}
+.bl li::before{content:"•";color:#f59e0b;font-size:11pt;flex-shrink:0}
+.q-sh{background:#eff6ff;color:#1d4ed8;border-left:3px solid #3b82f6}
+.q-sb{background:#f8faff;font-weight:500}
+.ans-sh{background:#f9fafb;color:#6b7280;border-left:3px solid #d1d5db}
+.ans-sb{background:#fff}
+.prec-sh{background:#f9fafb;color:#9ca3af;border-left:3px solid #e5e7eb}
+.prec-sb{background:#fafafa;color:#6b7280}
+.other{padding:6px 0;color:#4b5563}
+.summary{margin-top:14px;padding:12px 16px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0}
+.st{font-size:8pt;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+.sb2{font-size:9.5pt;color:#475569;line-height:1.8;white-space:pre-wrap}
+@page{margin:15mm 20mm}
+@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+</style></head><body>
+${posts.map(post => {
+  const lawArea = (post.lawArea as string) ?? classifyLawArea(post.caseNumber as string);
+  const badgeClass = lawArea === "민사법" ? "bc" : lawArea === "공법" ? "ba" : "bk";
+  const dateParts = [post.court, post.date && formatDate(post.date as string), post.caseName].filter(Boolean).join(" · ");
+  return `<div class="post">
+<div class="ph"><span class="badge ${badgeClass}">${lawArea}</span><div class="cn">${post.caseNumber}</div>${dateParts ? `<div class="meta">${dateParts}</div>` : ""}</div>
+${renderSectionsHtml(post.content as string || "")}
+${post.rulingPoints ? `<div class="summary"><div class="st">판시사항</div><div class="sb2">${post.rulingPoints}</div></div>` : ""}
+</div>`;
+}).join("")}
+</body></html>`;
+    const win = window.open("", "_blank", "width=850,height=950");
+    if (!win) { alert("팝업이 차단되었습니다. 팝업을 허용해 주세요."); return; }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.addEventListener("load", () => setTimeout(() => win.print(), 300));
+  };
+
   const reset = () => {
     prefetchAbortRef.current?.abort();
     prefetchRef.current = null;
@@ -935,6 +1013,33 @@ export default function Home() {
 
                 return (
                   <>
+                    {isAdmin && (
+                      <div className="flex items-center justify-between mb-2 pb-2 border-b border-zinc-50">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={visible.length > 0 && visible.every(p => selectedPostIds.has(p.id))}
+                            onChange={e => {
+                              if (e.target.checked) setSelectedPostIds(prev => new Set([...prev, ...visible.map(p => p.id)]));
+                              else setSelectedPostIds(prev => { const n = new Set(prev); visible.forEach(p => n.delete(p.id)); return n; });
+                            }}
+                            className="rounded border-zinc-300"
+                          />
+                          <span className="text-[11px] text-zinc-400">전체 선택</span>
+                        </label>
+                        {selectedPostIds.size > 0 && (
+                          <button
+                            onClick={exportToPdf}
+                            className="h-7 px-3 bg-blue-900 text-white rounded-lg text-[11px] font-semibold hover:bg-blue-800 transition-colors flex items-center gap-1.5"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                            </svg>
+                            PDF 내보내기 ({selectedPostIds.size}개)
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <div className="space-y-2">
                       {visible.map(post => (
                         <div key={post.id} className="bg-white rounded-xl border border-zinc-100 hover:border-zinc-300 transition-colors">
@@ -958,6 +1063,17 @@ export default function Home() {
                           </button>
                           {isAdmin && (
                             <div className="px-5 pb-3 flex items-center gap-3 border-t border-zinc-50 pt-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedPostIds.has(post.id)}
+                                onChange={() => setSelectedPostIds(prev => {
+                                  const n = new Set(prev);
+                                  n.has(post.id) ? n.delete(post.id) : n.add(post.id);
+                                  return n;
+                                })}
+                                onClick={e => e.stopPropagation()}
+                                className="rounded border-zinc-300"
+                              />
                               <select
                                 value={post.lawArea ?? classifyLawArea(post.caseNumber)}
                                 onChange={e => adminReclassify(post.id, e.target.value as LawArea)}
@@ -990,6 +1106,13 @@ export default function Home() {
                 );
               })()}
             </div>
+
+            {isAdmin && user && (
+              <AdminBatchGenerator
+                user={user}
+                onNewPost={post => setFeedPosts(prev => [post as PostPreview, ...prev])}
+              />
+            )}
           </div>
         )}
 
