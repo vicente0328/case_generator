@@ -5,7 +5,8 @@ import { useAuth } from "@/lib/contexts/AuthContext";
 import { auth, db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, where, deleteDoc } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
-import AdminBatchGenerator from "@/components/AdminBatchGenerator";
+import AdminBatchGenerator, { type AppendPayload } from "@/components/AdminBatchGenerator";
+import AdminImportantCases from "@/components/AdminImportantCases";
 
 const ADMIN_EMAIL = "admin@casegenerator.com";
 
@@ -500,6 +501,7 @@ export default function Home() {
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualText, setManualText] = useState("");
+  const [batchAppendPayload, setBatchAppendPayload] = useState<AppendPayload>({ cases: [], version: 0 });
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
@@ -1173,10 +1175,18 @@ ${post.rulingRatio ? `<div class="summary"><div class="st">판결요지</div><di
             </div>
 
             {isAdmin && user && (
-              <AdminBatchGenerator
-                user={user}
-                onNewPost={post => setFeedPosts(prev => [post as PostPreview, ...prev])}
-              />
+              <>
+                <AdminImportantCases
+                  onAppendCases={(nums) =>
+                    setBatchAppendPayload((prev) => ({ cases: nums, version: prev.version + 1 }))
+                  }
+                />
+                <AdminBatchGenerator
+                  user={user}
+                  onNewPost={post => setFeedPosts(prev => [post as PostPreview, ...prev])}
+                  appendPayload={batchAppendPayload}
+                />
+              </>
             )}
           </div>
         )}

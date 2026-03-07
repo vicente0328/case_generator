@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import type { User } from "firebase/auth";
@@ -30,9 +30,17 @@ interface PostPreviewLike {
   needsReview: number;
 }
 
+// appendPayload: AdminImportantCases에서 판례번호를 추가할 때 사용
+// version이 바뀔 때마다 cases를 textarea에 append
+export interface AppendPayload {
+  cases: string[];
+  version: number;
+}
+
 interface Props {
   user: User;
   onNewPost: (post: PostPreviewLike) => void;
+  appendPayload?: AppendPayload;
 }
 
 function StatusBadge({ status, error }: { status: BatchItem["status"]; error?: string }) {
@@ -60,11 +68,24 @@ function StatusBadge({ status, error }: { status: BatchItem["status"]; error?: s
   return <span className="text-[11px] text-red-500 truncate max-w-[120px]" title={error}>오류: {error?.slice(0, 20)}</span>;
 }
 
-export default function AdminBatchGenerator({ user, onNewPost }: Props) {
+export default function AdminBatchGenerator({ user, onNewPost, appendPayload }: Props) {
   const [open, setOpen] = useState(false);
   const [batchInput, setBatchInput] = useState("");
   const [queue, setQueue] = useState<BatchItem[]>([]);
   const [running, setRunning] = useState(false);
+
+  // 외부에서 판례번호 추가 요청 처리
+  useEffect(() => {
+    if (!appendPayload || appendPayload.cases.length === 0) return;
+    setBatchInput((prev) => {
+      const existing = prev.trim()
+        ? prev.trim().split(/[\n,]/).map((s) => s.trim()).filter(Boolean)
+        : [];
+      const toAdd = appendPayload.cases.filter((n) => !existing.includes(n));
+      return [...existing, ...toAdd].join("\n");
+    });
+    setOpen(true);
+  }, [appendPayload?.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateItem = (i: number, updates: Partial<BatchItem>) =>
     setQueue(prev => prev.map((x, j) => j === i ? { ...x, ...updates } : x));
