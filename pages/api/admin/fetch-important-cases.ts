@@ -176,62 +176,45 @@ async function fetchFromLawGoKr(
   };
 }
 
-// ── Source 2: 법학지·법률신문 크롤링 ──────────────────────────────────────────
-// 판례평석이 자주 실리는 법학지·법률신문을 크롤링하여 사건번호 추출.
-// 평석 대상 판례 = 법리적으로 중요 → 변시 출제 가능성 높음.
-//
-// 시도 순서:
-//   ① 법률신문 (lawtimes.co.kr)  — 판례평석 코너, 주 1~2회 업데이트, 로스쿨 교수 필진
-//   ② 저스티스 (justice.or.kr)   — 한국법학원 발간, 민사·공법·형사 균형
-//   ③ 법조 (koreanbar.or.kr)     — 대한변협, 판례평석 코너
-//   ④ glaw 최신판례              — 위 소스 실패 시 보완용 fallback
-async function fetchFromLegalJournals(): Promise<{ caseNumbers: string[]; error?: string }> {
-  const allNums = new Set<string>();
-  const minYear = CURRENT_YEAR - 3; // 최근 3년치 판례평석 커버
+// ── Source 2: Gemini Google Search Grounding ──────────────────────────────────
+// Gemini가 Google 검색을 실시간으로 활용하여 최신 중요 판례 사건번호를 찾음.
+// 법학지/법률신문 크롤링(JS 렌더링 차단) 대신 사용.
+// 실제 웹 검색 결과를 기반으로 하므로 hallucination 위험이 낮음.
+async function fetchFromGeminiGrounding(
+  apiKey: string
+): Promise<{ caseNumbers: string[]; error?: string }> {
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-  const attempts: string[] = [
-    // ① 법률신문 — 판례평석 검색 결과
-    `https://www.lawtimes.co.kr/search/news?query=${encodeURIComponent("판례평석")}`,
-    `https://www.lawtimes.co.kr/search/news?query=${encodeURIComponent("판례평석")}&page=2`,
-    `https://www.lawtimes.co.kr/search/news?query=${encodeURIComponent("대법원 판결 평석")}`,
-    // 법률신문 — 판례 전문 섹션
-    `https://www.lawtimes.co.kr/Legal-Info/Cases-Keyword`,
-    `https://www.lawtimes.co.kr/Legal-Info/Judgment`,
+    const fromYear = CURRENT_YEAR - 3;
+    const prompt = `${fromYear}년부터 ${CURRENT_YEAR}년 사이에 선고된 대한민국 대법원·헌법재판소 판례 중 법학계에서 중요하게 다루어진 판례를 Google 검색을 통해 찾아주세요.
 
-    // ② 저스티스 (한국법학원) — 논문 목록 (판례평석 포함)
-    `https://justice.or.kr/home/bbs/list.do?bbsId=BBSSTR_000000000031&pageIndex=1`,
-    `https://justice.or.kr/home/bbs/list.do?bbsId=BBSSTR_000000000031&pageIndex=2`,
+판례평석, 법률신문 기사, 대법원 보도자료, 법학 논문 등에서 실제 사건번호를 확인하여 제시하세요.
+변호사시험 사례형 출제 가능성이 높은 판례 위주로:
+- 민사법 (민법·상법·민사소송법, 사건번호에 "다"·"나"·"마"·"라" 포함) 10개
+- 공법 (헌법·행정법, 사건번호에 "두"·"헌" 포함) 10개
+- 형사법 (형법·형사소송법, 사건번호에 "도" 포함) 10개
 
-    // ③ 법조 (대한변협) — 판례평석 카테고리
-    `https://www.koreanbar.or.kr/pages/research/list.asp?cate=4`,
-    `https://www.koreanbar.or.kr/pages/research/list.asp?cate=5`,
+사건번호만 한 줄에 하나씩 출력하세요 (예: 2023다12345):`;
 
-    // ④ glaw fallback — 위 소스에서 사건번호를 못 가져올 경우 보완
-    `https://glaw.scourt.go.kr/wsjo/panre/sjo060.do?q=%EB%AF%BC%EB%B2%95&tabId=0&spId=&startDate=${CURRENT_YEAR - 2}0101`,
-    `https://glaw.scourt.go.kr/wsjo/panre/sjo060.do?q=%ED%98%95%EB%B2%95&tabId=0&spId=&startDate=${CURRENT_YEAR - 2}0101`,
-    `https://glaw.scourt.go.kr/wsjo/panre/sjo060.do?q=%ED%96%89%EC%A0%95%EB%B2%95&tabId=0&spId=&startDate=${CURRENT_YEAR - 2}0101`,
-  ];
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      tools: [{ googleSearchRetrieval: {} }],
+    });
 
-  for (const url of attempts) {
-    try {
-      const res = await fetch(url, {
-        headers: BROWSER_HEADERS,
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) continue;
-      const html = await res.text();
-      extractCaseNumbers(html, minYear).forEach((n) => allNums.add(n));
-    } catch {
-      // 개별 소스 실패 무시
-    }
+    const text = result.response.text();
+    const nums = extractCaseNumbers(text, fromYear);
+    return {
+      caseNumbers: nums,
+      error: nums.length === 0 ? "Gemini 웹검색 결과에서 사건번호를 추출하지 못했습니다" : undefined,
+    };
+  } catch (e) {
+    return {
+      caseNumbers: [],
+      error: `Gemini 웹검색 실패: ${e instanceof Error ? e.message : "오류"}`,
+    };
   }
-
-  return {
-    caseNumbers: [...allNums],
-    error: allNums.size === 0
-      ? "법학지·법률신문 크롤링 결과 없음 (JS 렌더링 또는 접근 차단)"
-      : undefined,
-  };
 }
 
 // ── AI추천 사건번호 법제처 실존 검증 ──────────────────────────────────────────
@@ -386,14 +369,15 @@ export default async function handler(
   const errors: string[] = [];
 
   // 3개 소스 병렬 조회
-  const [lawGoKrResult, journalResult, aiResult] = await Promise.all([
+  const [lawGoKrResult, groundingResult, aiResult] = await Promise.all([
     fetchFromLawGoKr(oc),
-    fetchFromLegalJournals(),
+    fetchFromGeminiGrounding(geminiKey),
     fetchFromGeminiKnowledge(geminiKey),
   ]);
 
+  const lawGoKrOk = !lawGoKrResult.error; // 법제처 정상 여부 (AI추천 검증에 사용)
   if (lawGoKrResult.error) errors.push(`법제처: ${lawGoKrResult.error}`);
-  if (journalResult.error) errors.push(`법학지: ${journalResult.error}`);
+  if (groundingResult.error) errors.push(`웹검색: ${groundingResult.error}`);
   if (aiResult.error) errors.push(`AI추천: ${aiResult.error}`);
 
   // 사건번호 맵 — 중복 제거 + 소스 추적 + 메타데이터
@@ -423,17 +407,21 @@ export default async function handler(
   lawGoKrResult.cases.forEach((c) =>
     addCase(c.caseNumber, "법제처", { caseName: c.caseName, court: c.court, date: c.date })
   );
-  journalResult.caseNumbers.forEach((n) => addCase(n, "법학지"));
+  groundingResult.caseNumbers.forEach((n) => addCase(n, "웹검색"));
 
-  // AI추천 사건번호는 법제처 API로 실존 검증 후 포함 (hallucination 방지)
-  const aiValidated = (
-    await Promise.all(
-      aiResult.caseNumbers.map((num) =>
-        validateCaseNumber(oc, num).then((ok) => (ok ? num : null))
+  // AI추천: 법제처가 정상일 때만 실존 검증 후 포함
+  // 법제처 실패 시 검증 불가 → AI추천 생략 (grounding 결과로 대체)
+  let aiValidated: string[] = [];
+  if (lawGoKrOk && aiResult.caseNumbers.length > 0) {
+    aiValidated = (
+      await Promise.all(
+        aiResult.caseNumbers.map((num) =>
+          validateCaseNumber(oc, num).then((ok) => (ok ? num : null))
+        )
       )
-    )
-  ).filter((n): n is string => n !== null);
-  aiValidated.forEach((n) => addCase(n, "AI추천"));
+    ).filter((n): n is string => n !== null);
+    aiValidated.forEach((n) => addCase(n, "AI추천"));
+  }
 
   const totalRaw = caseMap.size;
 
@@ -478,7 +466,7 @@ export default async function handler(
     형사법: toFetchedCases(classified["형사법"]),
     stats: {
       lawGoKr: lawGoKrResult.cases.length,
-      journal: journalResult.caseNumbers.length,
+      journal: groundingResult.caseNumbers.length,
       aiSuggested: aiValidated.length,
       totalRaw,
       totalFiltered:
