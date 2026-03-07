@@ -139,17 +139,33 @@ function GeneratedContent({ content }: { content: string }) {
   return (
     <div className="space-y-4">
       {sections.map((s, i) => {
-        if (s.type === "facts") return (
-          <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/60 flex items-center gap-3">
-              <div className="w-[3px] h-5 rounded-full bg-amber-400 flex-shrink-0" />
-              <span className="text-[11px] font-bold text-amber-600 uppercase tracking-widest">사실관계</span>
+        if (s.type === "facts") {
+          const bullets = s.body
+            .split("\n")
+            .flatMap(line => {
+              const trimmed = line.trim();
+              if (!trimmed) return [];
+              // 한 줄에 여러 문장이 있으면 마침표 기준으로 분리
+              const sentences = trimmed.split(/(?<=다\.)\s+/).map(t => t.trim()).filter(Boolean);
+              return sentences;
+            });
+          return (
+            <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/60 flex items-center gap-3">
+                <div className="w-[3px] h-5 rounded-full bg-amber-400 flex-shrink-0" />
+                <span className="text-[11px] font-bold text-amber-600 uppercase tracking-widest">사실관계</span>
+              </div>
+              <ul className="px-6 py-5 space-y-2.5">
+                {bullets.map((b, j) => (
+                  <li key={j} className="flex gap-3 text-[14px] text-zinc-800 leading-[1.85]">
+                    <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div className="px-6 py-6">
-              <p className="text-[15px] text-zinc-800 leading-[1.9] whitespace-pre-line">{s.body}</p>
-            </div>
-          </div>
-        );
+          );
+        }
         if (s.type === "question") return (
           <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-blue-100 bg-blue-50/60 flex items-center gap-3">
@@ -381,6 +397,18 @@ function FullTextSection({ fullText }: { fullText: string }) {
   );
 }
 
+/* ── 익명 닉네임 ── */
+const ADJS = ["은빛", "푸른", "붉은", "초록", "황금", "하얀", "검은", "보랏빛", "투명한", "용감한"];
+const NOUNS = ["고양이", "여우", "늑대", "독수리", "호랑이", "판다", "토끼", "오리", "곰", "사자"];
+function getAnonName(): string {
+  if (typeof window === "undefined") return "익명";
+  const stored = localStorage.getItem("anonName");
+  if (stored) return stored;
+  const name = ADJS[Math.floor(Math.random() * ADJS.length)] + "-" + NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  localStorage.setItem("anonName", name);
+  return name;
+}
+
 /* ── 메인 페이지 ── */
 export default function Home() {
   const { user } = useAuth();
@@ -447,9 +475,12 @@ export default function Home() {
   useEffect(() => {
     if (step === "done" && generated && !postId && !autoSaveRef.current && caseData) {
       autoSaveRef.current = true;
+      const userName = user
+        ? (user.displayName || user.email?.split("@")[0] || "익명")
+        : getAnonName();
       addDoc(collection(db, "posts"), {
         userId: user?.uid || null,
-        userName: user?.displayName || user?.email?.split("@")[0] || "익명",
+        userName,
         caseNumber: caseData.caseNumber,
         caseName: caseData.caseName || "",
         court: caseData.court || "",
@@ -466,7 +497,7 @@ export default function Home() {
         setFeedPosts(prev => [{
           id: ref.id,
           userId: user?.uid || null,
-          userName: user?.displayName || user?.email?.split("@")[0] || "익명",
+          userName,
           caseNumber: caseData.caseNumber,
           caseName: caseData.caseName || "",
           court: caseData.court || "",
