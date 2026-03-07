@@ -450,11 +450,10 @@ export default function Home() {
       if (!res.ok) throw new Error(data.error || "판례 조회 실패");
       setCaseData(data); setStep("preview");
 
-      // 기존 문제 조회 (병렬)
+      // 기존 문제 조회 (병렬) — orderBy 없이 where만 사용해 복합 인덱스 불필요
       getDocs(query(
         collection(db, "posts"),
         where("caseNumber", "==", data.caseNumber),
-        orderBy("createdAt", "desc"),
         limit(1)
       )).then(snap => {
         if (!snap.empty) {
