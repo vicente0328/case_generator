@@ -333,12 +333,14 @@ function stripHtml(text: string): string {
 }
 
 function formatOutlineBody(text: string): string {
-  // 목차 마커(1. 가. 1) (1) 가) 나) 등) 앞에 줄바꿈 삽입
+  // 목차 마커 앞에 줄바꿈 삽입.
+  // (?<!\d) : 직전 문자가 숫자인 경우(날짜: 2016. 5. 1.) 제외
+  // [1-9]\d{0,2} : 1~3자리 숫자만 (4자리 연도 2016 등 제외)
   return text
-    .replace(/(\S[ \t]+)(\d+\. )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
+    .replace(/(?<!\d)(\S[ \t]+)([1-9]\d{0,2}\. )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
     .replace(/(\S[ \t]+)([가나다라마바사아자차카타파하]\. )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
     .replace(/(\S[ \t]+)(\(\d+\) )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
-    .replace(/(\S[ \t]+)(\d+\) )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
+    .replace(/(?<!\d)(\S[ \t]+)([1-9]\d?\) )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
     .replace(/(\S[ \t]+)([가나다라마바사아자차카타파하]\) )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker);
 }
 
