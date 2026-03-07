@@ -30,66 +30,52 @@ export default function Home() {
   return (
     <Layout title="변시 민사법 사례 생성기">
       {/* Hero */}
-      <section className="bg-navy-950 text-white py-20 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage:
-                "repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(255,255,255,.05) 40px, rgba(255,255,255,.05) 41px), repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(255,255,255,.05) 40px, rgba(255,255,255,.05) 41px)",
-            }}
-          />
-        </div>
-
-        <div className="max-w-4xl mx-auto text-center relative">
-          <div className="inline-block bg-gold-500/20 border border-gold-500/40 text-gold-300 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 tracking-wide">
+      <section className="px-4 pt-20 pb-16">
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="inline-flex items-center gap-1.5 bg-navy-900/8 text-navy-700 text-xs font-semibold px-3.5 py-1.5 rounded-full mb-7 border border-navy-200/40">
+            <span className="w-1.5 h-1.5 rounded-full bg-gold-500 inline-block" />
             변호사시험 민사법 사례형 학습 플랫폼
           </div>
-          <h1 className="text-4xl sm:text-5xl font-serif font-bold mb-6 leading-tight">
-            판례로 만드는
-            <br />
-            <span className="text-gold-400">변시 민사법 사례형 문제</span>
+          <h1 className="text-4xl sm:text-5xl font-serif font-bold text-gray-900 mb-5 leading-tight tracking-tight">
+            판례로 만드는<br />
+            <span className="text-navy-900">변시 사례형 문제</span>
           </h1>
-          <p className="text-gray-300 text-lg mb-10 max-w-2xl mx-auto leading-relaxed">
-            사건번호만 입력하면, AI가 실제 변호사시험 형식으로
-            <br className="hidden sm:block" />
-            사실관계·문제·해설을 자동으로 생성해 드립니다.
+          <p className="text-gray-500 text-base sm:text-lg mb-10 leading-relaxed">
+            사건번호만 입력하면 AI가 실제 변호사시험 형식으로<br className="hidden sm:block" />
+            사실관계·문제·해설을 자동으로 생성합니다.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/generate"
-              className="inline-flex items-center justify-center gap-2 bg-gold-500 text-navy-900 px-8 py-3.5 rounded-xl font-bold text-base hover:bg-gold-400 transition-colors"
+              className="inline-flex items-center justify-center gap-2 bg-navy-900 text-white px-8 py-3.5 rounded-full font-semibold text-base hover:bg-navy-700 transition-colors shadow-sm"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
               문제 생성 시작
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
             </Link>
             <Link
               href="/community"
-              className="inline-flex items-center justify-center gap-2 border border-white/30 text-white px-8 py-3.5 rounded-xl font-semibold text-base hover:bg-white/10 transition-colors"
+              className="inline-flex items-center justify-center gap-2 bg-white text-gray-700 px-8 py-3.5 rounded-full font-semibold text-base hover:bg-gray-50 transition-colors border border-gray-200"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              커뮤니티 둘러보기
+              커뮤니티 보기
             </Link>
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section className="py-16 px-4 bg-gray-50">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-serif font-bold text-navy-900 text-center mb-12">
-            핵심 기능
-          </h2>
-          <div className="grid md:grid-cols-3 gap-6">
+      <section className="px-4 py-14">
+        <div className="max-w-5xl mx-auto">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest text-center mb-8">핵심 기능</p>
+          <div className="grid md:grid-cols-3 gap-4">
             {features.map((f) => (
-              <div key={f.title} className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                <div className="text-3xl mb-4">{f.icon}</div>
-                <h3 className="font-serif font-bold text-navy-900 text-lg mb-2">{f.title}</h3>
-                <p className="text-gray-600 text-sm leading-relaxed">{f.desc}</p>
+              <div key={f.title} className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm">
+                <div className="w-11 h-11 rounded-2xl bg-navy-50 flex items-center justify-center text-xl mb-4">
+                  {f.icon}
+                </div>
+                <h3 className="font-serif font-bold text-gray-900 text-base mb-2">{f.title}</h3>
+                <p className="text-gray-500 text-sm leading-relaxed">{f.desc}</p>
               </div>
             ))}
           </div>
@@ -97,41 +83,35 @@ export default function Home() {
       </section>
 
       {/* How it works */}
-      <section className="py-16 px-4">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-serif font-bold text-navy-900 text-center mb-12">
-            이용 방법
-          </h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {steps.map((s, i) => (
-              <div key={s.num} className="relative">
-                {i < steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-8 left-full w-full h-0.5 bg-gray-200 z-0" style={{ width: "calc(100% - 3rem)", left: "calc(50% + 1.5rem)" }} />
-                )}
-                <div className="relative bg-white rounded-xl p-5 shadow-sm border border-gray-100 text-center z-10">
-                  <div className="text-gold-500 font-serif font-bold text-2xl mb-2">{s.num}</div>
-                  <h3 className="font-semibold text-navy-900 mb-2">{s.title}</h3>
-                  <p className="text-gray-500 text-xs leading-relaxed whitespace-pre-line">{s.desc}</p>
+      <section className="px-4 py-14 bg-white border-y border-gray-200/60">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest text-center mb-8">이용 방법</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {steps.map((s) => (
+              <div key={s.num} className="text-center p-5">
+                <div className="w-10 h-10 rounded-full bg-navy-900 text-white font-bold text-sm flex items-center justify-center mx-auto mb-4 font-serif">
+                  {s.num}
                 </div>
+                <h3 className="font-semibold text-gray-900 text-sm mb-2">{s.title}</h3>
+                <p className="text-gray-400 text-xs leading-relaxed whitespace-pre-line">{s.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Notice Banner */}
-      <section className="py-10 px-4 bg-amber-50 border-t border-b border-amber-200">
-        <div className="max-w-4xl mx-auto flex gap-4">
-          <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 text-lg">
-            ⚠
+      {/* Notice */}
+      <section className="px-4 py-10">
+        <div className="max-w-2xl mx-auto bg-amber-50 border border-amber-200/80 rounded-2xl p-5 flex gap-4">
+          <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 text-sm font-bold mt-0.5">
+            !
           </div>
           <div>
-            <h3 className="font-semibold text-amber-900 mb-1">학습 목적 서비스 안내</h3>
-            <p className="text-amber-800 text-sm leading-relaxed">
-              이 서비스는 <strong>학습 목적</strong>으로 제공됩니다. AI가 생성한 사실관계는 실제 판례와 다소 각색될 수 있으며,
-              변호사시험 출제 방향을 보장하지 않습니다.{" "}
-              <Link href="/guide" className="underline hover:text-amber-900">
-                사용 가이드 보기 →
+            <h3 className="font-semibold text-amber-900 text-sm mb-1">학습 목적 서비스 안내</h3>
+            <p className="text-amber-800 text-xs leading-relaxed">
+              AI가 생성한 사실관계는 실제 판례와 다소 각색될 수 있으며, 변호사시험 출제 방향을 보장하지 않습니다.{" "}
+              <Link href="/guide" className="underline font-medium">
+                사용 가이드 →
               </Link>
             </p>
           </div>
@@ -139,20 +119,22 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section className="py-16 px-4 bg-navy-900 text-white text-center">
-        <h2 className="text-3xl font-serif font-bold mb-4">지금 바로 시작해 보세요</h2>
-        <p className="text-gray-300 mb-8 max-w-xl mx-auto">
-          판결요지만 봐서는 어떻게 출제될지 상상하기 어려울 때, 이 서비스가 도움이 됩니다.
-        </p>
-        <Link
-          href="/generate"
-          className="inline-flex items-center gap-2 bg-gold-500 text-navy-900 px-8 py-3.5 rounded-xl font-bold text-base hover:bg-gold-400 transition-colors"
-        >
-          문제 생성하기
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
+      <section className="px-4 py-16 text-center">
+        <div className="max-w-xl mx-auto">
+          <h2 className="text-2xl sm:text-3xl font-serif font-bold text-gray-900 mb-3">지금 바로 시작해 보세요</h2>
+          <p className="text-gray-500 text-sm mb-8">
+            판결요지만 봐서는 어떻게 출제될지 상상하기 어려울 때, 이 서비스가 도움이 됩니다.
+          </p>
+          <Link
+            href="/generate"
+            className="inline-flex items-center gap-2 bg-gold-500 text-white px-8 py-3.5 rounded-full font-bold text-base hover:bg-gold-600 transition-colors shadow-sm"
+          >
+            문제 생성하기
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        </div>
       </section>
     </Layout>
   );

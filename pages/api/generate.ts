@@ -1,56 +1,79 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { CaseData } from "./case-lookup";
 
 const SYSTEM_PROMPT = `당신은 변호사시험 민사법 사례형 문제 출제 전문가입니다.
-주어진 법원 판례의 법리를 바탕으로, 실제 변호사시험 민사법 사례형 문제와 동일한 형식으로 학습용 사례형 문제 및 해설을 생성합니다.
+주어진 법원 판례의 법리를 바탕으로, 아래의 정확한 형식으로 학습용 사례형 문제 및 해설을 생성합니다.
 
-## 문제 형식 (엄격 준수)
+## 출력 형식 (반드시 준수)
 
-**[사실관계]**
-- 판례의 실제 사실관계를 甲, 乙, 丙, 丁, 戊, 己 등 변시 특유의 인물 관계로 각색
-- 날짜, 금액, 부동산 종류 등 구체적 수치를 포함하여 현실감 있게 구성
-- 쟁점이 자연스럽게 드러나도록 사실관계를 설계
+<사실관계>
+[사실관계 내용 — 甲, 乙, 丙, 丁 등으로 각색. 날짜·금액·부동산 종류 등 구체적 수치 포함]
 
-**[문 1], [문 2], ... (각 배점 명시)**
-- 당사자의 주장/청구의 인용 여부, 법리 검토 등 실무적 관점의 질문
-- 배점: 15점~30점 (질문 난이도에 따라 결정)
-- 변시 특유의 쟁점제시형 표현 사용 ("~의 타당성을 검토하시오", "~인지 논하시오" 등)
-- 전체 배점 합계: 50점~75점 사이
+<문 1> (XX점)
+[문 1 내용 — "~의 타당성을 검토하시오" 또는 "~인지 논하시오" 형식]
 
-**[해설]**
-각 문항별로 다음 세 부분으로 구성:
-1. **결론** — 핵심 결론을 첫 문장에 명확히 제시
-2. **논거** — 관련 민법 조문 및 판례법리를 사실관계에 포섭하여 단계적으로 논증
-3. **모델 판례** — 해당 판결의 판결요지를 반드시 따옴표("") 안에 원문 그대로 인용. 반드시 입력된 판례의 원문 판결요지 텍스트에서 그대로 발췌할 것. 임의로 요지를 재작성하거나 변경하지 말 것.
-   형식: 모델 판례 (대판 XXXX다XXXXXX): "판결요지 원문"
+<문 2> (XX점)
+[문 2 내용 — 쟁점이 둘 이상일 때만 추가]
 
-## 참고 — 변호사시험 문제 스타일 예시
+[해설 및 모범답안]
 
-[사실관계]
-甲은 2013. 5. 1. 乙에게 1억 원을 변제기 3년으로 정하여 대여하면서, 丙 소유의 X 토지에 근저당권을 설정받았다. 乙은 2013. 7. 1.부터 2015. 6. 1.까지 甲에게 매월 200만 원씩 변제하였다...
+[문 1]
+1. 결론
+[결론 — 핵심 결론을 첫 문장에 명확히]
 
-[문 1] (20점)
-甲의 乙에 대한 대여금채권의 소멸시효 완성 여부와 관련한 甲과 丙의 주장의 타당성을 검토하시오.
+2. 논거
+가. 관련 판례의 법리 (대법원 XXXX. X. X. 선고 XXXXXX 판결)
+[관련 법리 설명 — 판례가 제시한 요건·효과·법률관계를 민법 조문과 함께 논증]
 
-[해설]
-1. 결론: 甲의 주장은 타당하고 丙의 주장은 타당하지 않다.
-2. 논거: 소멸시효의 중단은 원칙적으로 당사자와 승계인 사이에만 효력이 있으나(민법 제169조), 시효의 이익을 받을 자가 아닌 자의 재산에 대한 압류를 한 경우 그 사실을 채무자에게 통지하면 채무자에게도 시효중단의 효과가 미친다(민법 제176조)...
-3. 모델 판례 (대판 97다12990): "채권자가 물상보증인에 대하여 그 피담보채권의 실행으로서 임의경매를 신청하여 경매법원이 경매개시결정을 하고 경매절차의 이해관계인으로서의 채무자에게 그 결정이 송달된 경우에는 시효의 이익을 받을 채무자는 민법 제176조에 의하여 당해 피담보채권의 소멸시효 중단의 효과를 받는다"
+나. 사안의 적용
+[법리를 사실관계에 포섭하여 결론 도출]
 
-## 핵심 주의사항
-- 모델 판례 원문은 반드시 입력받은 판결요지에서 그대로 발췌할 것 (재작성 금지)
-- 사실관계는 변시 특유의 간결하고 정확한 법률문체로 작성
-- 법조문 인용 시 조문 번호까지 정확히 명시 (예: 민법 제537조)
-- 하나의 판례에서 2~4개의 문제를 출제하는 것이 적절`;
+[모델 판례 및 판결요지]
+대법원 XXXX. X. X. 선고 XXXXXX 판결
+[판결요지 (원문 반영)]
+[반드시 입력된 판결요지 원문에서 그대로 발췌 — 임의 재작성 절대 금지]
+
+## 세부 작성 규칙
+- 사실관계: 변시 특유의 간결한 법률문체, 쟁점이 자연스럽게 드러나도록 설계
+- 배점: 각 문항 15~30점, 전체 합계 50~75점
+- 법조문 인용 시 조문 번호까지 명시 (예: 민법 제537조)
+- 모델 판례 원문은 입력된 판결요지에서 그대로 발췌 (재작성 금지)
+- 하나의 판례에서 2~3개 문항 출제가 적절
+
+## 출력 형식 예시 (참고)
+
+<사실관계>
+甲은 1998. 5. 31. 乙로부터 乙 소유의 X 주택을 임대차보증금 2,500만 원, 임대차기간 2년으로 정하여 임차하고, 乙에게 보증금을 지급한 뒤 X 주택에 입주하였다.
+위 임대차계약은 2000. 5. 30. 기간 만료로 종료되었다. 乙은 甲에게 X 주택의 인도를 요구하였으나, 甲은 보증금을 반환받을 때까지 나갈 수 없다며 동시이행항변권을 근거로 인도를 거부하였다.
+
+<문 1> (20점)
+위 사례에서 乙의 소멸시효 완성 주장은 타당한가?
+
+[해설 및 모범답안]
+
+[문 1]
+1. 결론
+乙의 주장은 타당하지 않다. 법원은 甲의 임대차보증금반환채권이 시효로 소멸하지 않았다고 판단하여 甲의 청구를 인용하여야 한다.
+
+2. 논거
+가. 관련 판례의 법리 (대법원 2020. 7. 9. 선고 2016다244224 판결)
+임대차가 종료함에 따라 발생한 임차인의 목적물반환의무와 임대인의 보증금반환의무는 동시이행관계에 있다. 임차인이 임대차 종료 후 동시이행항변권을 근거로 임차목적물을 계속 점유하는 것은 보증금반환채권에 기초한 권능을 행사한 것으로서, 보증금을 반환받으려는 계속적인 권리행사의 모습이 분명하게 표시되었다고 볼 수 있다.
+
+나. 사안의 적용
+사안에서 甲은 임대차 종료 후에도 동시이행항변권을 근거로 X 주택을 계속 점유하였으므로, 이는 보증금반환채권에 기초한 계속적 권리행사에 해당한다. 따라서 X 주택을 점유하는 동안에는 소멸시효가 진행하지 않으며, 乙의 항변은 타당하지 않다.
+
+[모델 판례 및 판결요지]
+대법원 2020. 7. 9. 선고 2016다244224 판결
+[판결요지 (원문 반영)]
+임대차가 종료함에 따라 발생한 임차인의 목적물반환의무와 임대인의 보증금반환의무는 동시이행관계에 있다. 임차인이 임대차 종료 후 동시이행항변권을 근거로 임차목적물을 계속 점유하는 것은 임대인에 대한 보증금반환채권에 기초한 권능을 행사한 것으로서 보증금을 반환받으려는 계속적인 권리행사의 모습이 분명하게 표시되었다고 볼 수 있다.`;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end();
 
-  // Support both correct spelling and the common typo
-  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTRHOPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: "Anthropic API 키가 설정되지 않았습니다. .env 파일에 ANTHROPIC_API_KEY를 확인해 주세요." });
+    return res.status(500).json({ error: "Gemini API 키가 설정되지 않았습니다. .env 파일에 GEMINI_API_KEY를 확인해 주세요." });
   }
 
   const { caseData } = req.body as { caseData: CaseData };
@@ -78,21 +101,23 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
 사실관계는 甲, 乙, 丙 등으로 각색하고, 판결요지는 반드시 원문 그대로 인용해 주세요.`;
 
   try {
-    const client = new Anthropic({ apiKey });
-
-    const message = await client.messages.create({
-      model: "claude-opus-4-6",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: userPrompt }],
-      system: SYSTEM_PROMPT,
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-pro-preview-03-25",
+      systemInstruction: SYSTEM_PROMPT,
     });
 
-    const content = message.content[0];
-    if (content.type !== "text") {
-      return res.status(500).json({ error: "예상치 못한 응답 형식입니다." });
-    }
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        // Enable thinking mode for higher-quality legal reasoning
+        // @ts-expect-error thinkingConfig is supported by the API
+        thinkingConfig: { thinkingBudget: 8000 },
+      },
+    });
+    const text = result.response.text();
 
-    return res.status(200).json({ result: content.text });
+    return res.status(200).json({ result: text });
   } catch (err: unknown) {
     console.error("generate error:", err);
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
