@@ -4,28 +4,30 @@
   --font-family-sans: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+  }
+
+  html {
+    font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #F6F6F7;
+    color: #09090B;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: #F6F6F7;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  h1, h2, h3 { letter-spacing: -0.03em; }
+
+  ::-webkit-scrollbar { width: 0; background: transparent; }
 }
-
-html {
-  font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background: #F6F6F7;
-  color: #09090B;
-  overflow-x: hidden;
-  scroll-behavior: smooth;
-}
-
-body {
-  background: #F6F6F7;
-}
-
-a { color: inherit; text-decoration: none; }
-
-h1, h2, h3 { letter-spacing: -0.03em; }
-
-::-webkit-scrollbar { width: 0; background: transparent; }

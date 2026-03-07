@@ -30,9 +30,20 @@ function formatDate(d: string): string {
   return d;
 }
 
+// AI 응답에서 불필요한 메타 문자열 제거
+function cleanAiText(text: string): string {
+  return text
+    .replace(/^(출력 형식 준수|출력 형식|형식 준수|참고|주의사항|주의)[^\n]*/gim, "")
+    .replace(/^#+\s*(출력 형식|세부 작성 규칙|작성 규칙)[^\n]*/gim, "")
+    .replace(/^\*\*?(출력 형식|세부 작성|참고|주의)[^*\n]*/gim, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function parseContent(text: string): Section[] {
+  const cleaned = cleanAiText(text);
   const sections: Section[] = [];
-  const lines = text.split("\n");
+  const lines = cleaned.split("\n");
   let cur: Section | null = null;
 
   const flush = () => {
@@ -71,8 +82,8 @@ function CaseCard({ data, onReset }: { data: CaseData; onReset: () => void }) {
       {/* 헤더 */}
       <div className="px-6 py-5 border-b border-zinc-100 flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-400" />
             <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">판례 확인</span>
           </div>
           <p className="text-[21px] font-bold tracking-tight font-mono text-zinc-900">{data.caseNumber}</p>
@@ -89,19 +100,19 @@ function CaseCard({ data, onReset }: { data: CaseData; onReset: () => void }) {
       </div>
 
       {/* 판시사항 */}
-      <div className="px-6 py-5 border-b border-zinc-100">
-        <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-3">판시사항</p>
+      <div className="px-6 py-6 border-b border-zinc-100">
+        <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-4">판시사항</p>
         {data.rulingPoints
-          ? <p className="text-[14px] text-zinc-700 leading-[1.75] whitespace-pre-line">{data.rulingPoints}</p>
+          ? <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{data.rulingPoints}</p>
           : <p className="text-[13px] text-zinc-300 italic">정보 없음</p>
         }
       </div>
 
       {/* 판결요지 */}
-      <div className="px-6 py-5">
-        <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-3">판결요지</p>
+      <div className="px-6 py-6">
+        <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-4">판결요지</p>
         {data.rulingRatio
-          ? <p className="text-[14px] text-zinc-700 leading-[1.75] whitespace-pre-line">{data.rulingRatio}</p>
+          ? <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{data.rulingRatio}</p>
           : <p className="text-[13px] text-zinc-300 italic">정보 없음</p>
         }
       </div>
@@ -117,44 +128,44 @@ function GeneratedContent({ content }: { content: string }) {
       {sections.map((s, i) => {
         if (s.type === "facts") return (
           <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
-            <div className="px-5 py-3 border-b border-amber-100 bg-amber-50/60 flex items-center gap-2">
-              <div className="w-1 h-4 rounded-full bg-amber-300 flex-shrink-0" />
+            <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/60 flex items-center gap-3">
+              <div className="w-[3px] h-5 rounded-full bg-amber-400 flex-shrink-0" />
               <span className="text-[11px] font-bold text-amber-600 uppercase tracking-widest">사실관계</span>
             </div>
-            <div className="px-5 py-5">
+            <div className="px-6 py-6">
               <p className="text-[15px] text-zinc-800 leading-[1.9] whitespace-pre-line">{s.body}</p>
             </div>
           </div>
         );
         if (s.type === "question") return (
           <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
-            <div className="px-5 py-3 border-b border-blue-100 bg-blue-50/60 flex items-center gap-2">
-              <div className="w-1 h-4 rounded-full bg-blue-400 flex-shrink-0" />
+            <div className="px-6 py-4 border-b border-blue-100 bg-blue-50/60 flex items-center gap-3">
+              <div className="w-[3px] h-5 rounded-full bg-blue-400 flex-shrink-0" />
               <span className="text-[11px] font-bold text-blue-600 uppercase tracking-widest">{s.heading}</span>
             </div>
-            <div className="px-5 py-5">
+            <div className="px-6 py-6">
               <p className="text-[15px] text-zinc-800 leading-[1.9] whitespace-pre-line font-medium">{s.body}</p>
             </div>
           </div>
         );
         if (s.type === "answer") return (
           <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
-            <div className="px-5 py-3 border-b border-zinc-100 bg-zinc-50 flex items-center gap-2">
-              <div className="w-1 h-4 rounded-full bg-zinc-300 flex-shrink-0" />
+            <div className="px-6 py-4 border-b border-zinc-100 bg-zinc-50 flex items-center gap-3">
+              <div className="w-[3px] h-5 rounded-full bg-zinc-300 flex-shrink-0" />
               <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">해설 및 모범답안</span>
             </div>
-            <div className="px-5 py-5">
+            <div className="px-6 py-6">
               <p className="text-[15px] text-zinc-700 leading-[1.9] whitespace-pre-line">{s.body}</p>
             </div>
           </div>
         );
         if (s.type === "precedent") return (
           <div key={i} className="rounded-xl border border-zinc-100 bg-zinc-50/80 overflow-hidden">
-            <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
-              <div className="w-1 h-4 rounded-full bg-zinc-200 flex-shrink-0" />
+            <div className="px-6 py-4 border-b border-zinc-100 flex items-center gap-3">
+              <div className="w-[3px] h-5 rounded-full bg-zinc-300 flex-shrink-0" />
               <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">모델 판례</span>
             </div>
-            <div className="px-5 py-5">
+            <div className="px-6 py-6">
               <p className="text-[14px] text-zinc-500 leading-[1.9] whitespace-pre-line">{s.body}</p>
             </div>
           </div>
@@ -341,7 +352,7 @@ export default function Home() {
 
   return (
     <Layout title="Case Generator">
-      <div className="max-w-[640px] mx-auto">
+      <div className="max-w-[800px] mx-auto px-6">
 
         {/* 헤더 텍스트 */}
         <div className="pt-12 pb-8 text-center">

@@ -34,6 +34,18 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
+function stripHtml(text: string): string {
+  return text
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .trim();
+}
+
 function dig(data: unknown, ...keys: string[]): string {
   if (!data || typeof data !== "object") return "";
   const obj = data as Record<string, unknown>;
@@ -183,12 +195,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const detail = extractDetail(detailData);
       if (detail) {
         const fullText = dig(detail, "판례내용", "precContent", "fullText");
-        const rulingPoints =
+        const rulingPoints = stripHtml(
           dig(detail, "판시사항", "precIssue", "ruling_issue") ||
-          extractFromFullText(fullText, "판시사항");
-        const rulingRatio =
+          extractFromFullText(fullText, "판시사항")
+        );
+        const rulingRatio = stripHtml(
           dig(detail, "판결요지", "precSummary", "ruling_summary") ||
-          extractFromFullText(fullText, "판결요지");
+          extractFromFullText(fullText, "판결요지")
+        );
 
         return res.status(200).json({
           caseNumber: dig(detail, "사건번호", "caseNo") || found["사건번호"] || trimmed,
@@ -206,14 +220,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Step 5: search 결과로 fallback — 판례내용이 있으면 파싱
     const fullText = found["판례내용"] || "";
-    const rulingPoints =
+    const rulingPoints = stripHtml(
       found["판시사항"] ||
       extractFromFullText(fullText, "판시사항") ||
-      "";
-    const rulingRatio =
+      ""
+    );
+    const rulingRatio = stripHtml(
       found["판결요지"] ||
       extractFromFullText(fullText, "판결요지") ||
-      "";
+      ""
+    );
 
     return res.status(200).json({
       caseNumber: found["사건번호"] || trimmed,
