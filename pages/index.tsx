@@ -494,6 +494,7 @@ export default function Home() {
   const [existingPost, setExistingPost] = useState<PostPreview | null>(null);
   const [feedSearch, setFeedSearch] = useState("");
   const [feedFilter, setFeedFilter] = useState<"all" | "mine">("all");
+  const [feedSort, setFeedSort] = useState<"recent" | "date" | "likes">("recent");
   const [displayCount, setDisplayCount] = useState(10);
   const [feedLoading, setFeedLoading] = useState(true);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([false, false, false, false, false]);
@@ -1031,32 +1032,54 @@ ${post.rulingRatio ? `<div class="summary"><div class="st">판결요지</div><di
 
             {/* ── 문제 피드 ── */}
             <div className="mt-10">
-              {/* 헤더: 탭 + 검색 */}
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex bg-zinc-100 p-0.5 rounded-lg flex-shrink-0">
-                  <button
-                    onClick={() => { setFeedFilter("all"); setDisplayCount(10); }}
-                    className={`px-3 py-1 text-[12px] font-medium rounded-md transition-all ${feedFilter === "all" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
-                  >
-                    전체
-                  </button>
-                  <button
-                    onClick={() => { setFeedFilter("mine"); setDisplayCount(10); }}
-                    className={`px-3 py-1 text-[12px] font-medium rounded-md transition-all ${feedFilter === "mine" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
-                  >
-                    내 문제
-                  </button>
+              {/* 헤더: 탭 + 정렬 + 검색 */}
+              <div className="flex flex-col gap-2 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex bg-zinc-100 p-0.5 rounded-lg flex-shrink-0">
+                    <button
+                      onClick={() => { setFeedFilter("all"); setDisplayCount(10); }}
+                      className={`px-3 py-1 text-[12px] font-medium rounded-md transition-all ${feedFilter === "all" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
+                    >
+                      전체
+                    </button>
+                    <button
+                      onClick={() => { setFeedFilter("mine"); setDisplayCount(10); }}
+                      className={`px-3 py-1 text-[12px] font-medium rounded-md transition-all ${feedFilter === "mine" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
+                    >
+                      내 문제
+                    </button>
+                  </div>
+                  <div className="relative flex-1">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-300 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                    </svg>
+                    <input
+                      value={feedSearch}
+                      onChange={e => { setFeedSearch(e.target.value); setDisplayCount(10); }}
+                      placeholder="사건번호 또는 사건명 검색…"
+                      className="w-full h-8 bg-white border border-zinc-200 rounded-lg pl-8 pr-3 text-[13px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
+                    />
+                  </div>
                 </div>
-                <div className="relative flex-1">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-300 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-                  </svg>
-                  <input
-                    value={feedSearch}
-                    onChange={e => { setFeedSearch(e.target.value); setDisplayCount(10); }}
-                    placeholder="사건번호 또는 사건명 검색…"
-                    className="w-full h-8 bg-white border border-zinc-200 rounded-lg pl-8 pr-3 text-[13px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
-                  />
+                {/* 정렬 */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] text-zinc-300 mr-1">정렬</span>
+                  {(["recent", "date", "likes"] as const).map((s) => {
+                    const label = s === "recent" ? "최신 등록순" : s === "date" ? "선고일 최신순" : "추천 많은순";
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => { setFeedSort(s); setDisplayCount(10); }}
+                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors border ${
+                          feedSort === s
+                            ? "bg-zinc-800 text-white border-zinc-800"
+                            : "text-zinc-400 border-zinc-200 hover:border-zinc-400 hover:text-zinc-600"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1069,12 +1092,17 @@ ${post.rulingRatio ? `<div class="summary"><div class="st">판결요지</div><di
                   ? byTab.filter(p => p.userId === user?.uid)
                   : byTab;
                 const q = feedSearch.trim().toLowerCase();
-                const filtered = q
+                const searched = q
                   ? source.filter(p =>
                       p.caseNumber.toLowerCase().includes(q) ||
                       (p.caseName || "").toLowerCase().includes(q)
                     )
                   : source;
+                const filtered = [...searched].sort((a, b) => {
+                  if (feedSort === "likes") return (b.likes ?? 0) - (a.likes ?? 0);
+                  if (feedSort === "date") return (b.date ?? "").localeCompare(a.date ?? "");
+                  return 0; // "recent" — Firestore createdAt desc 순서 유지
+                });
                 const visible = filtered.slice(0, displayCount);
 
                 if (feedLoading) return (
