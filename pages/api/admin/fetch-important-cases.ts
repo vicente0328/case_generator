@@ -305,7 +305,7 @@ async function classifyWithGemini(
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
   const list = cases
-    .slice(0, 120)
+    .slice(0, 160)
     .map((c) => `${c.caseNumber}${c.caseName ? ` [${c.caseName}]` : ""}`)
     .join("\n");
 
@@ -421,6 +421,14 @@ export default async function handler(
       date: meta.date,
       sources: [...meta.sources],
     }));
+
+  // AI추천 전용 케이스를 앞으로 정렬 — classifyWithGemini slice 안에 반드시 포함되도록
+  // (법제처 케이스가 많아 뒤로 밀리는 문제 방지)
+  filtered.sort((a, b) => {
+    const aAI = a.sources.includes("AI추천") && a.sources.length === 1 ? 0 : 1;
+    const bAI = b.sources.includes("AI추천") && b.sources.length === 1 ? 0 : 1;
+    return aAI - bAI;
+  });
 
   // Gemini 분류
   const classified = await classifyWithGemini(geminiKey, filtered);

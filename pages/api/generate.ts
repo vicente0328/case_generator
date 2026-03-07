@@ -231,6 +231,13 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
       systemInstruction: getSystemPrompt(lawArea),
     });
 
+    // 사건번호·선고일자 헤더를 첫 청크로 주입 (Gemini 출력 앞에 항상 표시)
+    const dateStr = caseData.date
+      ? String(caseData.date).replace(/(\d{4})(\d{2})(\d{2})/, "$1. $2. $3.")
+      : "";
+    const header = `**${caseData.caseNumber}${dateStr ? ` | ${dateStr}` : ""}**\n\n`;
+    send({ text: header });
+
     const { stream } = await model.generateContentStream(userPrompt);
     for await (const chunk of stream) {
       const text = chunk.text();
