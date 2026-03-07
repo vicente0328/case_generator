@@ -35,7 +35,13 @@ interface Section {
   body: string;
 }
 
-const SUGGESTED = ["2016다271226", "2019다272855", "2021다264253", "2020다209815"];
+type LawArea = "민사법" | "공법" | "형사법";
+
+const SUGGESTED: Record<LawArea, string[]> = {
+  민사법: ["2016다271226", "2019다272855", "2021다264253", "2020다209815"],
+  공법: ["2019두47403", "2021두35935", "2020두42569", "2022두35681"],
+  형사법: ["2022도5827", "2021도11126", "2020도12630", "2019도8862"],
+};
 
 function formatDate(d: string): string {
   const s = String(d).replace(/\D/g, "");
@@ -426,6 +432,7 @@ export default function Home() {
   const { user } = useAuth();
   const router = useRouter();
 
+  const [activeTab, setActiveTab] = useState<LawArea>("민사법");
   const [step, setStep] = useState<Step>("input");
   const [input, setInput] = useState("");
   const [caseData, setCaseData] = useState<CaseData | null>(null);
@@ -522,7 +529,7 @@ export default function Home() {
     if (step !== "done") autoSaveRef.current = false;
   }, [step, generated, postId, caseData, user]);
 
-  const runPrefetch = (data: CaseData) => {
+  const runPrefetch = (data: CaseData, lawArea: LawArea = activeTab) => {
     prefetchAbortRef.current?.abort();
     const controller = new AbortController();
     prefetchAbortRef.current = controller;
@@ -535,7 +542,7 @@ export default function Home() {
         const res = await fetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ caseData: data }),
+          body: JSON.stringify({ caseData: data, lawArea }),
           signal: controller.signal,
         });
         if (!res.body) { state.error = "스트림을 받을 수 없습니다."; return; }
@@ -644,7 +651,7 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseData }),
+        body: JSON.stringify({ caseData, lawArea: activeTab }),
       });
       if (!res.body) throw new Error("스트림을 받을 수 없습니다.");
 
@@ -738,20 +745,34 @@ export default function Home() {
 
         {/* 법역 탭 */}
         <div className="flex gap-1 mb-6 bg-white border border-zinc-100 rounded-xl p-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <button className="flex-1 py-2 text-[13px] font-semibold text-blue-900 bg-blue-50 rounded-lg transition-colors">
-            민사법
-          </button>
-          <button disabled className="flex-1 py-2 text-[13px] font-medium text-zinc-300 rounded-lg cursor-not-allowed">
-            공법 <span className="text-[11px]">준비중</span>
-          </button>
-          <button disabled className="flex-1 py-2 text-[13px] font-medium text-zinc-300 rounded-lg cursor-not-allowed">
-            형사법 <span className="text-[11px]">준비중</span>
-          </button>
+          {(["민사법", "공법", "형사법"] as LawArea[]).map(tab => (
+            <button
+              key={tab}
+              onClick={() => {
+                if (tab === activeTab) return;
+                prefetchAbortRef.current?.abort();
+                prefetchRef.current = null;
+                autoSaveRef.current = false;
+                setActiveTab(tab);
+                setStep("input");
+                setCaseData(null);
+                setGenerated("");
+                setError("");
+                setPostId(null);
+                setInput("");
+                setVoted(null);
+                setExistingPost(null);
+              }}
+              className={`flex-1 py-2 text-[13px] rounded-lg transition-colors ${
+                activeTab === tab
+                  ? "font-semibold text-blue-900 bg-blue-50"
+                  : "font-medium text-zinc-500 hover:text-zinc-800"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
-
-        <p className="mb-5 text-[12px] text-zinc-400 text-center">
-          현재는 민사 판례만 지원됩니다. 공법 및 형사 판례도 곧 출시될 예정입니다.
-        </p>
 
         {/* 에러 */}
         {error && (
@@ -788,7 +809,7 @@ export default function Home() {
             <div className="mt-4 flex items-center gap-4">
               <span className="text-[11px] font-semibold text-zinc-300 uppercase tracking-widest">추천</span>
               <div className="flex gap-3 flex-wrap">
-                {SUGGESTED.map(n => (
+                {SUGGESTED[activeTab].map(n => (
                   <button
                     key={n}
                     onClick={() => setInput(n)}
