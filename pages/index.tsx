@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/lib/contexts/AuthContext";
@@ -279,19 +279,78 @@ export default function Home() {
   const [saved, setSaved] = useState(false);
   const [postId, setPostId] = useState<string | null>(null);
 
+  const prefetchAbortRef = useRef<AbortController | null>(null);
+  const prefetchRef = useRef<{
+    text: string;
+    done: boolean;
+    error: string | null;
+    notify: (() => void) | null;
+  } | null>(null);
+
   useEffect(() => {
     if (router.isReady && typeof router.query.case === "string") setInput(router.query.case);
   }, [router.isReady, router.query.case]);
+
+  const runPrefetch = (data: CaseData) => {
+    prefetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    prefetchAbortRef.current = controller;
+
+    const state = { text: "", done: false, error: null as string | null, notify: null as (() => void) | null };
+    prefetchRef.current = state;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ caseData: data }),
+          signal: controller.signal,
+        });
+        if (!res.body) { state.error = "스트림을 받을 수 없습니다."; return; }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.error) { state.error = payload.error; state.notify?.(); return; }
+              if (payload.done) { state.done = true; state.notify?.(); return; }
+              if (payload.text) { state.text += payload.text; state.notify?.(); }
+            } catch {}
+          }
+        }
+        state.done = true;
+        state.notify?.();
+      } catch (e) {
+        if ((e as Error)?.name === "AbortError") return;
+        state.error = e instanceof Error ? e.message : "오류";
+        state.notify?.();
+      }
+    })();
+  };
 
   const lookup = async () => {
     const num = input.trim();
     if (!num) return;
     setError(""); setLoadingCase(true);
+    prefetchAbortRef.current?.abort();
+    prefetchRef.current = null;
     try {
       const res = await fetch(`/api/case-lookup?caseNumber=${encodeURIComponent(num)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "판례 조회 실패");
       setCaseData(data); setStep("preview");
+      runPrefetch(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "조회 중 오류가 발생했습니다.");
     } finally {
@@ -299,9 +358,42 @@ export default function Home() {
     }
   };
 
-  const generate = async () => {
+  const generate = async (fresh = false) => {
     if (!caseData) return;
+
+    if (fresh) {
+      prefetchAbortRef.current?.abort();
+      prefetchRef.current = null;
+    }
+
     setError(""); setLoadingGen(true); setStep("generating"); setGenerated("");
+
+    const prefetch = prefetchRef.current;
+
+    if (prefetch && !prefetch.error) {
+      const flush = () => {
+        if (prefetch.error) {
+          setError(prefetch.error);
+          setStep("preview");
+          setLoadingGen(false);
+          return;
+        }
+        if (prefetch.text) {
+          setGenerated(prefetch.text);
+          setStep(prefetch.done ? "done" : "streaming");
+          if (prefetch.done) setLoadingGen(false);
+        } else if (prefetch.done) {
+          setStep("done");
+          setLoadingGen(false);
+        }
+      };
+
+      flush();
+      if (!prefetch.done) prefetch.notify = flush;
+      return;
+    }
+
+    prefetchRef.current = null;
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -376,6 +468,8 @@ export default function Home() {
   };
 
   const reset = () => {
+    prefetchAbortRef.current?.abort();
+    prefetchRef.current = null;
     setStep("input"); setCaseData(null); setGenerated(""); setError("");
     setSaved(false); setPostId(null); setInput("");
   };
@@ -457,12 +551,47 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── 생성 중 (첫 응답 전) ── */}
+        {/* ── 생성 중 (첫 응답 전) — 스켈레톤 ── */}
         {step === "generating" && (
-          <div className="py-20 flex flex-col items-center justify-center text-center">
-            <div className="w-8 h-8 border-2 border-zinc-200 border-t-zinc-700 rounded-full animate-spin mb-6" />
-            <p className="text-[16px] font-semibold text-zinc-900 mb-1">문제를 만들고 있어요</p>
-            <p className="text-[13px] text-zinc-400">판례를 분석하고 있습니다. 잠시만 기다려 주세요.</p>
+          <div className="space-y-4 animate-pulse">
+            <div className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/60 flex items-center gap-3">
+                <div className="w-[3px] h-5 rounded-full bg-amber-200 flex-shrink-0" />
+                <span className="text-[11px] font-bold text-amber-300 uppercase tracking-widest">사실관계</span>
+              </div>
+              <div className="px-6 py-6 space-y-2.5">
+                <div className="h-3.5 bg-zinc-100 rounded-full w-full" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[95%]" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[88%]" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-full" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[72%]" />
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-blue-100 bg-blue-50/60 flex items-center gap-3">
+                <div className="w-[3px] h-5 rounded-full bg-blue-200 flex-shrink-0" />
+                <span className="text-[11px] font-bold text-blue-300 uppercase tracking-widest">문 1</span>
+              </div>
+              <div className="px-6 py-6 space-y-2.5">
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[90%]" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[60%]" />
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-zinc-100 bg-zinc-50 flex items-center gap-3">
+                <div className="w-[3px] h-5 rounded-full bg-zinc-200 flex-shrink-0" />
+                <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-widest">해설 및 모범답안</span>
+              </div>
+              <div className="px-6 py-6 space-y-2.5">
+                <div className="h-3.5 bg-zinc-100 rounded-full w-full" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[93%]" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[85%]" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-full" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[78%]" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[88%]" />
+                <div className="h-3.5 bg-zinc-100 rounded-full w-[65%]" />
+              </div>
+            </div>
           </div>
         )}
 
@@ -496,7 +625,7 @@ export default function Home() {
               </button>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={generate}
+                  onClick={() => generate(true)}
                   className="h-8 px-3.5 text-[13px] text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors flex items-center gap-1.5"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
