@@ -100,6 +100,14 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
 위 판례의 핵심 법리를 중심으로 변호사시험 민사법 사례형 문제를 생성해 주세요.
 사실관계는 甲, 乙, 丙 등으로 각색하고, 판결요지는 반드시 원문 그대로 인용해 주세요.`;
 
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  const send = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
@@ -107,13 +115,17 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
       systemInstruction: SYSTEM_PROMPT,
     });
 
-    const result = await model.generateContent(userPrompt);
-    const text = result.response.text();
-
-    return res.status(200).json({ result: text });
+    const { stream } = await model.generateContentStream(userPrompt);
+    for await (const chunk of stream) {
+      const text = chunk.text();
+      if (text) send({ text });
+    }
+    send({ done: true });
   } catch (err: unknown) {
     console.error("generate error:", err);
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-    return res.status(500).json({ error: `문제 생성 중 오류: ${msg}` });
+    send({ error: `문제 생성 중 오류: ${msg}` });
+  } finally {
+    res.end();
   }
 }

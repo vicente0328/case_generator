@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, getDocs, query, orderBy } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
 
-type Step = "input" | "preview" | "generating" | "done";
+type Step = "input" | "preview" | "generating" | "streaming" | "done";
 
 interface Comment {
   id: string;
@@ -301,16 +301,46 @@ export default function Home() {
 
   const generate = async () => {
     if (!caseData) return;
-    setError(""); setLoadingGen(true); setStep("generating");
+    setError(""); setLoadingGen(true); setStep("generating"); setGenerated("");
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ caseData }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "문제 생성 실패");
-      setGenerated(data.result); setStep("done");
+      if (!res.body) throw new Error("스트림을 받을 수 없습니다.");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+      let started = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const payload = JSON.parse(line.slice(6));
+            if (payload.error) throw new Error(payload.error);
+            if (payload.done) { setStep("done"); return; }
+            if (payload.text) {
+              fullText += payload.text;
+              setGenerated(fullText);
+              if (!started) { setStep("streaming"); started = true; }
+            }
+          } catch (e) {
+            if (e instanceof Error && e.message !== "Unexpected end of JSON input") throw e;
+          }
+        }
+      }
+      setStep("done");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "문제 생성 중 오류가 발생했습니다.");
       setStep("preview");
@@ -427,12 +457,27 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── 생성 중 ── */}
+        {/* ── 생성 중 (첫 응답 전) ── */}
         {step === "generating" && (
           <div className="py-20 flex flex-col items-center justify-center text-center">
             <div className="w-8 h-8 border-2 border-zinc-200 border-t-zinc-700 rounded-full animate-spin mb-6" />
             <p className="text-[16px] font-semibold text-zinc-900 mb-1">문제를 만들고 있어요</p>
             <p className="text-[13px] text-zinc-400">판례를 분석하고 있습니다. 잠시만 기다려 주세요.</p>
+          </div>
+        )}
+
+        {/* ── 스트리밍 중 (실시간 표시) ── */}
+        {step === "streaming" && generated && (
+          <div>
+            <GeneratedContent content={generated} />
+            <div className="mt-6 flex items-center gap-2 text-[12px] text-zinc-300">
+              <span className="flex gap-0.5">
+                <span className="w-1 h-1 rounded-full bg-zinc-300 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1 h-1 rounded-full bg-zinc-300 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-1 h-1 rounded-full bg-zinc-300 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </span>
+              생성 중…
+            </div>
           </div>
         )}
 
