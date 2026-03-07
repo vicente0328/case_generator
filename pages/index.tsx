@@ -119,17 +119,54 @@ function parseContent(text: string): Section[] {
   return sections.filter(s => s.body.trim() || s.heading);
 }
 
+/* ── 사실관계 불렛 분리 (따옴표 내부 줄바꿈/문장분리 방지) ── */
+function splitFactsBullets(body: string): string[] {
+  const rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
+
+  // Step 1: 직전 줄에 닫히지 않은 큰따옴표(")가 있으면 다음 줄과 합침
+  const joined: string[] = [];
+  for (const line of rawLines) {
+    if (joined.length > 0) {
+      const prev = joined[joined.length - 1];
+      if ((prev.match(/"/g) || []).length % 2 !== 0) {
+        joined[joined.length - 1] = prev + " " + line;
+        continue;
+      }
+    }
+    joined.push(line);
+  }
+
+  // Step 2: 각 줄을 따옴표 바깥의 '다. ' 기준으로만 문장 분리
+  return joined.flatMap(line => {
+    const parts: string[] = [];
+    let cur = "";
+    let quotes = 0;
+    for (let i = 0; i < line.length; i++) {
+      cur += line[i];
+      if (line[i] === '"') quotes++;
+      if (
+        quotes % 2 === 0 &&
+        cur.endsWith("다.") &&
+        i + 1 < line.length &&
+        /\s/.test(line[i + 1])
+      ) {
+        while (i + 1 < line.length && /\s/.test(line[i + 1])) i++;
+        parts.push(cur.trim());
+        cur = "";
+      }
+    }
+    if (cur.trim()) parts.push(cur.trim());
+    return parts;
+  });
+}
+
 /* ── PDF 내보내기용 HTML 렌더러 ── */
 function renderSectionsHtml(content: string): string {
   const sections = parseContent(content);
   return sections.map(s => {
     if (s.type === "header") return `<div class="section header-section"><strong class="prec-citation">${s.body}</strong></div>`;
     if (s.type === "facts") {
-      const bullets = s.body.split("\n").flatMap(line => {
-        const t = line.trim();
-        if (!t) return [];
-        return t.split(/(?<=다\.)\s+/).map(x => x.trim()).filter(Boolean);
-      });
+      const bullets = splitFactsBullets(s.body);
       return `<div class="section"><div class="sh facts-sh">사실관계</div><div class="sb facts-sb"><ul class="bl">${bullets.map(b => `<li>${b}</li>`).join("")}</ul></div></div>`;
     }
     if (s.type === "question") return `<div class="section"><div class="sh q-sh">${s.heading}</div><div class="sb q-sb">${s.body.replace(/\n/g, "<br>")}</div></div>`;
@@ -191,21 +228,10 @@ function GeneratedContent({ content }: { content: string }) {
     <div className="space-y-4">
       {sections.map((s, i) => {
         if (s.type === "header") return (
-          <div key={i} className="bg-zinc-900 rounded-xl px-6 py-4 flex items-center gap-3">
-            <div className="w-[3px] h-5 rounded-full bg-blue-400 flex-shrink-0" />
-            <p className="text-[14px] font-bold text-white leading-snug tracking-tight">{s.body}</p>
-          </div>
+          <p key={i} className="text-[14px] font-bold text-zinc-900 leading-snug">{s.body}</p>
         );
         if (s.type === "facts") {
-          const bullets = s.body
-            .split("\n")
-            .flatMap(line => {
-              const trimmed = line.trim();
-              if (!trimmed) return [];
-              // 한 줄에 여러 문장이 있으면 마침표 기준으로 분리
-              const sentences = trimmed.split(/(?<=다\.)\s+/).map(t => t.trim()).filter(Boolean);
-              return sentences;
-            });
+          const bullets = splitFactsBullets(s.body);
           return (
             <div key={i} className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
               <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/60 flex items-center gap-3">
@@ -898,8 +924,6 @@ ${posts.map(post => {
   return `<div class="post">
 <div class="ph"><span class="badge ${badgeClass}">${lawArea}</span><div class="cn">${post.caseNumber}</div>${dateParts ? `<div class="meta">${dateParts}</div>` : ""}</div>
 ${renderSectionsHtml(post.content as string || "")}
-${post.rulingPoints ? `<div class="summary"><div class="st">판시사항</div><div class="sb2">${post.rulingPoints}</div></div>` : ""}
-${post.rulingRatio ? `<div class="summary"><div class="st">판결요지</div><div class="sb2">${post.rulingRatio}</div></div>` : ""}
 </div>`;
 }).join("")}
 </body></html>`;
