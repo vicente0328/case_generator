@@ -234,9 +234,26 @@ async function fetchFromLegalJournals(): Promise<{ caseNumbers: string[]; error?
   };
 }
 
+// ── AI추천 사건번호 법제처 실존 검증 ──────────────────────────────────────────
+// Gemini가 제안한 사건번호를 법제처 API에서 정확히 일치하는 항목이 있는지 확인.
+// 존재하지 않으면 hallucination으로 간주하고 제외.
+async function validateCaseNumber(oc: string, num: string): Promise<boolean> {
+  try {
+    const url =
+      `https://www.law.go.kr/DRF/lawSearch.do` +
+      `?OC=${encodeURIComponent(oc)}&target=prec&type=JSON` +
+      `&query=${encodeURIComponent(num)}&display=5`;
+    const data = await fetchLawGoKrUrl(url);
+    const items = parseLawGoKrItems(data, "20000101"); // 날짜 필터 없이 전체 검색
+    return items.some((item) => item.caseNumber === num);
+  } catch {
+    return false;
+  }
+}
+
 // ── Source 3: Gemini 지식 기반 판례번호 추천 (RISS 대체) ─────────────────────
 // Gemini에게 최신 중요 판례번호를 직접 추천받음.
-// ⚠ Gemini 지식 컷오프 이후 판례는 hallucination 가능 — 일괄 생성 시 case-lookup으로 검증됨
+// ⚠ Gemini 지식 컷오프 이후 판례는 hallucination 가능 — 법제처 API로 실존 검증 후 포함
 async function fetchFromGeminiKnowledge(
   apiKey: string
 ): Promise<{ caseNumbers: string[]; error?: string }> {
@@ -407,7 +424,16 @@ export default async function handler(
     addCase(c.caseNumber, "법제처", { caseName: c.caseName, court: c.court, date: c.date })
   );
   journalResult.caseNumbers.forEach((n) => addCase(n, "법학지"));
-  aiResult.caseNumbers.forEach((n) => addCase(n, "AI추천"));
+
+  // AI추천 사건번호는 법제처 API로 실존 검증 후 포함 (hallucination 방지)
+  const aiValidated = (
+    await Promise.all(
+      aiResult.caseNumbers.map((num) =>
+        validateCaseNumber(oc, num).then((ok) => (ok ? num : null))
+      )
+    )
+  ).filter((n): n is string => n !== null);
+  aiValidated.forEach((n) => addCase(n, "AI추천"));
 
   const totalRaw = caseMap.size;
 
@@ -453,7 +479,7 @@ export default async function handler(
     stats: {
       lawGoKr: lawGoKrResult.cases.length,
       journal: journalResult.caseNumbers.length,
-      aiSuggested: aiResult.caseNumbers.length,
+      aiSuggested: aiValidated.length,
       totalRaw,
       totalFiltered:
         classified["민사법"].length +
