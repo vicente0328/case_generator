@@ -5,32 +5,91 @@ import { useAuth } from "@/lib/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
+import { 
+  MagnifyingGlassIcon, 
+  ArrowPathIcon, 
+  DocumentPlusIcon,
+  CheckCircleIcon,
+  ShareIcon,
+  SparklesIcon,
+  ArrowRightIcon
+} from "@heroicons/react/24/outline";
 
 type Step = "input" | "preview" | "generating" | "done";
 
 function CaseInfoCard({ data }: { data: CaseData }) {
+  const [rulingExpanded, setRulingExpanded] = useState(false);
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-200/60 overflow-hidden shadow-sm">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="font-semibold text-gray-900 text-sm">판례 정보</h3>
-        {data.court && <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">{data.court}</span>}
-      </div>
-      <div className="p-5 space-y-4">
-        <div className="flex flex-wrap gap-x-6 gap-y-2">
-          <div className="text-sm"><span className="text-gray-400 text-xs">사건번호</span><p className="font-semibold text-gray-900 font-mono text-sm mt-0.5">{data.caseNumber}</p></div>
-          {data.caseName && <div className="text-sm"><span className="text-gray-400 text-xs">사건명</span><p className="font-medium text-gray-800 mt-0.5">{data.caseName}</p></div>}
-          {data.date && <div className="text-sm"><span className="text-gray-400 text-xs">선고일</span><p className="font-medium text-gray-800 mt-0.5">{formatDate(data.date)}</p></div>}
+    <div className="bg-white rounded-[20px] border border-[#E5E5EA] overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header */}
+      <div className="px-6 py-4 bg-[#F9F9FB] border-b border-[#E5E5EA] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#34C759] inline-block" />
+          <h3 className="font-semibold text-[#1C1C1E] text-[15px]">판례 확인</h3>
         </div>
-        {data.rulingPoints && (
+        {data.court && <span className="text-[11px] font-medium text-[#8E8E93] bg-[#E5E5EA] px-2.5 py-1 rounded-full">{data.court}</span>}
+      </div>
+
+      <div className="p-6 space-y-5">
+        {/* Meta info */}
+        <div className="flex flex-wrap gap-x-8 gap-y-4">
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">판시사항</p>
-            <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-xl p-3.5">{data.rulingPoints}</p>
+            <span className="text-[#8E8E93] text-[12px] uppercase tracking-wide block mb-1">사건번호</span>
+            <p className="font-bold text-[#1C1C1E] font-mono text-[17px]">{data.caseNumber}</p>
+          </div>
+          {data.caseName && (
+            <div>
+              <span className="text-[#8E8E93] text-[12px] uppercase tracking-wide block mb-1">사건명</span>
+              <p className="font-medium text-[#1C1C1E] text-[15px]">{data.caseName}</p>
+            </div>
+          )}
+          {data.date && (
+            <div>
+              <span className="text-[#8E8E93] text-[12px] uppercase tracking-wide block mb-1">선고일</span>
+              <p className="font-medium text-[#1C1C1E] text-[15px]">{formatDate(data.date)}</p>
+            </div>
+          )}
+        </div>
+
+        {/* 판시사항 */}
+        {data.rulingPoints ? (
+          <div>
+            <p className="text-[12px] font-semibold text-[#007AFF] uppercase tracking-wide mb-2">판시사항</p>
+            <div className="bg-[#F0F7FF] border border-[#007AFF]/10 rounded-[14px] p-4">
+              <p className="text-[14px] text-[#3A3A3C] leading-[1.75] whitespace-pre-line">{data.rulingPoints}</p>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p className="text-[12px] font-semibold text-[#8E8E93] uppercase tracking-wide mb-2">판시사항</p>
+            <p className="text-[13px] text-[#C7C7CC] italic">판시사항 정보 없음</p>
           </div>
         )}
+
+        {/* 판결요지 (접기/펼치기) */}
         {data.rulingRatio && (
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">판결요지</p>
-            <p className="text-sm text-gray-700 leading-relaxed bg-amber-50 rounded-xl p-3.5">{data.rulingRatio}</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[12px] font-semibold text-[#9A6D1F] uppercase tracking-wide">판결요지</p>
+              <button
+                onClick={() => setRulingExpanded((v) => !v)}
+                className="text-[12px] text-[#8E8E93] hover:text-[#1C1C1E] transition-colors"
+              >
+                {rulingExpanded ? "접기 ↑" : "펼치기 ↓"}
+              </button>
+            </div>
+            <div className={`relative bg-[#FFF8E6] border border-[#FFE0A2]/40 rounded-[14px] p-4 overflow-hidden transition-all duration-300 ${rulingExpanded ? "" : "max-h-[96px]"}`}>
+              <p className="text-[14px] text-[#3A3A3C] leading-[1.75] whitespace-pre-line">{data.rulingRatio}</p>
+              {!rulingExpanded && (
+                <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#FFF8E6] to-transparent pointer-events-none" />
+              )}
+            </div>
+            {!rulingExpanded && data.rulingRatio.length > 150 && (
+              <button onClick={() => setRulingExpanded(true)} className="mt-1.5 text-[12px] text-[#007AFF] hover:underline">
+                전체 보기
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -49,59 +108,59 @@ function GeneratedContent({ content }: { content: string }) {
   const sections = parseContent(content);
 
   return (
-    <div className="space-y-4 legal-content">
+    <div className="space-y-6 legal-content animate-in fade-in slide-in-from-bottom-8 duration-700">
       {sections.map((s, i) => {
         if (s.type === "facts") {
           return (
-            <div key={i} className="rounded-2xl overflow-hidden border border-amber-200/80">
-              <div className="bg-amber-50 px-5 py-3 border-b border-amber-200/60">
-                <span className="text-xs font-bold text-amber-700 uppercase tracking-widest">사실관계</span>
+            <div key={i} className="rounded-[20px] overflow-hidden border border-[#E5E5EA] bg-white shadow-sm">
+              <div className="bg-[#FFF8E6] px-6 py-4 border-b border-[#FFE0A2]/30">
+                <span className="text-[13px] font-bold text-[#9A6D1F] uppercase tracking-wide">사실관계</span>
               </div>
-              <div className="bg-amber-50/50 px-5 py-4">
-                <p className="text-gray-800 text-sm leading-loose whitespace-pre-line">{s.body}</p>
+              <div className="p-6">
+                <p className="text-[#1C1C1E] text-[16px] leading-[1.8] whitespace-pre-line">{s.body}</p>
               </div>
             </div>
           );
         }
         if (s.type === "question") {
           return (
-            <div key={i} className="rounded-2xl overflow-hidden border border-navy-200/60">
-              <div className="bg-navy-50 px-5 py-3 border-b border-navy-100">
-                <span className="text-xs font-bold text-navy-700 uppercase tracking-widest">{s.heading}</span>
+            <div key={i} className="rounded-[20px] overflow-hidden border border-[#E5E5EA] bg-white shadow-sm">
+              <div className="bg-[#F0F7FF] px-6 py-4 border-b border-[#007AFF]/10">
+                <span className="text-[13px] font-bold text-[#007AFF] uppercase tracking-wide">{s.heading}</span>
               </div>
-              <div className="bg-navy-50/30 px-5 py-4">
-                <p className="text-gray-800 text-sm leading-loose whitespace-pre-line font-medium">{s.body}</p>
+              <div className="p-6">
+                <p className="text-[#1C1C1E] text-[16px] leading-[1.8] whitespace-pre-line font-medium">{s.body}</p>
               </div>
             </div>
           );
         }
         if (s.type === "answer") {
           return (
-            <div key={i} className="rounded-2xl overflow-hidden border border-gray-200/80">
-              <div className="bg-gray-50 px-5 py-3 border-b border-gray-100">
-                <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">해설 및 모범답안</span>
+            <div key={i} className="rounded-[20px] overflow-hidden border border-[#E5E5EA] bg-white shadow-sm">
+              <div className="bg-[#F2F2F7] px-6 py-4 border-b border-[#E5E5EA]">
+                <span className="text-[13px] font-bold text-[#636366] uppercase tracking-wide">해설 및 모범답안</span>
               </div>
-              <div className="bg-white px-5 py-4">
-                <div className="text-gray-800 text-sm leading-loose whitespace-pre-line">{s.body}</div>
+              <div className="p-6">
+                <div className="text-[#1C1C1E] text-[16px] leading-[1.8] whitespace-pre-line">{s.body}</div>
               </div>
             </div>
           );
         }
         if (s.type === "precedent") {
           return (
-            <div key={i} className="rounded-2xl border border-gold-200/80 overflow-hidden">
-              <div className="bg-gold-50 px-5 py-3 border-b border-gold-200/60">
-                <span className="text-xs font-bold text-gold-700 uppercase tracking-widest">모델 판례 및 판결요지</span>
+            <div key={i} className="rounded-[20px] border border-[#E5E5EA] overflow-hidden bg-white shadow-sm">
+              <div className="bg-[#F9F9FB] px-6 py-4 border-b border-[#E5E5EA]">
+                <span className="text-[13px] font-bold text-[#636366] uppercase tracking-wide">모델 판례 및 판결요지</span>
               </div>
-              <div className="bg-gold-50/30 px-5 py-4">
-                <p className="font-serif text-sm text-gray-700 leading-loose whitespace-pre-line">{s.body}</p>
+              <div className="p-6">
+                <p className="font-serif text-[16px] text-[#3A3A3C] leading-[1.8] whitespace-pre-line">{s.body}</p>
               </div>
             </div>
           );
         }
         return (
-          <div key={i} className="text-gray-700 text-sm leading-loose whitespace-pre-line px-1">
-            {s.heading && <p className="font-semibold text-gray-900 mb-1">{s.heading}</p>}
+          <div key={i} className="text-[#3A3A3C] text-[16px] leading-[1.8] whitespace-pre-line px-2">
+            {s.heading && <p className="font-semibold text-[#1C1C1E] mb-2">{s.heading}</p>}
             {s.body}
           </div>
         );
@@ -131,34 +190,28 @@ function parseContent(text: string): ContentSection[] {
   for (const line of lines) {
     const trimmed = line.trim();
 
-    // <사실관계> or [사실관계]
     if (/^<사실관계>$|^\[사실관계\]$|^\*\*\[사실관계\]\*\*$/.test(trimmed)) {
       flush();
       current = { type: "facts", heading: "사실관계", body: "" };
     }
-    // <문 N> (Xpoint) or <문제> — question blocks
     else if (/^<문\s*\d*>|^<문제>/.test(trimmed)) {
       flush();
       const heading = trimmed.replace(/^<|>$/g, "").trim();
       current = { type: "question", heading, body: "" };
     }
-    // Old format: [문 N] at start of line (not inside answer section)
     else if (/^\[문\s*\d+\]\s*\(\d+점\)|^\*\*\[문\s*\d+\]/.test(trimmed) && current?.type !== "answer") {
       flush();
       const heading = trimmed.replace(/\*\*/g, "").replace(/^\[|\]$/g, "").trim();
       current = { type: "question", heading, body: "" };
     }
-    // [해설 및 모범답안] or [해설]
-    else if (/^\[해설/.test(trimmed)) {
+    else if (/^\[해설 및 모범답안\]|^\[해설\]/.test(trimmed)) {
       flush();
       current = { type: "answer", heading: "해설 및 모범답안", body: "" };
     }
-    // [모델 판례 및 판결요지]
     else if (/^\[모델\s*판례/.test(trimmed)) {
       flush();
       current = { type: "precedent", heading: "모델 판례 및 판결요지", body: "" };
     }
-    // Old inline 모델 판례: format
     else if (/^모델\s*판례/.test(trimmed) && current?.type !== "answer" && current?.type !== "precedent") {
       flush();
       const match = trimmed.match(/모델\s*판례[^:]*:\s*(.*)/s);
@@ -187,12 +240,12 @@ export default function GeneratePage() {
   const [step, setStep] = useState<Step>("input");
   const [caseNumberInput, setCaseNumberInput] = useState("");
 
-  // Pre-fill from URL query param ?case=XXXX
   useEffect(() => {
     if (router.isReady && typeof router.query.case === "string") {
       setCaseNumberInput(router.query.case);
     }
   }, [router.isReady, router.query.case]);
+
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [generatedText, setGeneratedText] = useState("");
   const [loadingCase, setLoadingCase] = useState(false);
@@ -244,7 +297,7 @@ export default function GeneratePage() {
 
   const handleSave = async () => {
     if (!user) {
-      setError("커뮤니티에 저장하려면 로그인이 필요합니다.");
+      setError("로그인이 필요한 기능입니다.");
       return;
     }
     if (!caseData || !generatedText) return;
@@ -281,97 +334,71 @@ export default function GeneratePage() {
     setCaseNumberInput("");
   };
 
-  const stepList = [
-    { key: "input", label: "판례 입력" },
-    { key: "preview", label: "판례 확인" },
-    { key: "generating", label: "생성 중" },
-    { key: "done", label: "완료" },
-  ] as const;
-  const stepIndex = stepList.findIndex((s) => s.key === step);
-
   return (
-    <Layout title="문제 생성 - 변시 민사법 사례 생성기">
-      <div className="max-w-3xl mx-auto px-4 py-10">
-        {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-gray-900 mb-1.5">사례형 문제 생성</h1>
-          <p className="text-gray-400 text-sm">사건번호를 입력하면 변호사시험 민사법 사례형 문제를 자동 생성합니다.</p>
+    <Layout title="문제 생성 - Case Generator">
+      <div className="max-w-3xl mx-auto py-6 sm:py-10">
+        
+        {/* Header */}
+        <div className="mb-10 text-center sm:text-left">
+          <h1 className="text-[28px] font-bold text-[#1C1C1E] mb-2">문제 생성</h1>
+          <p className="text-[#8E8E93] text-[15px]">사건번호만 입력하세요. 나머지는 AI가 처리합니다.</p>
         </div>
 
-        {/* Progress Steps */}
-        <div className="flex items-center gap-1.5 mb-8">
-          {stepList.map((s, i) => (
-            <div key={s.key} className="flex items-center gap-1.5">
-              <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                i === stepIndex
-                  ? "bg-navy-900 text-white"
-                  : i < stepIndex
-                  ? "bg-green-100 text-green-700"
-                  : "bg-gray-100 text-gray-400"
-              }`}>
-                {i < stepIndex ? (
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center text-[9px]">{i + 1}</span>
-                )}
-                <span className="hidden sm:inline">{s.label}</span>
-              </div>
-              {i < stepList.length - 1 && <div className="w-4 h-px bg-gray-200" />}
-            </div>
-          ))}
-        </div>
-
-        {/* Error */}
+        {/* Error Toast */}
         {error && (
-          <div className="mb-5 bg-red-50 border border-red-200 rounded-2xl px-4 py-3.5 text-sm text-red-700 flex items-start gap-2.5">
-            <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <div className="mb-6 bg-[#FF3B30]/10 border border-[#FF3B30]/20 rounded-[14px] px-4 py-3 text-[14px] text-[#FF3B30] flex items-center gap-2 animate-in slide-in-from-top-2">
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span>{error}</span>
           </div>
         )}
 
-        {/* Step: Input */}
+        {/* Step 1: Input */}
         {step === "input" && (
-          <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-6 sm:p-8">
-            <h2 className="text-base font-semibold text-gray-900 mb-1">사건번호 입력</h2>
-            <p className="text-sm text-gray-400 mb-5">대법원 판례의 사건번호 (숫자 + 한글) 를 입력하세요.</p>
-            <div className="flex gap-2.5">
-              <input
-                type="text"
-                value={caseNumberInput}
-                onChange={(e) => setCaseNumberInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLookup()}
-                placeholder="예: 2016다271226"
-                className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-navy-300 focus:border-transparent bg-gray-50 font-mono"
-                disabled={loadingCase}
-              />
+          <div className="card p-6 sm:p-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <h2 className="text-[17px] font-semibold text-[#1C1C1E] mb-2">사건번호 입력</h2>
+            <p className="text-[14px] text-[#8E8E93] mb-6">대법원 판례의 사건번호 (예: 2016다271226)를 입력해주세요.</p>
+            
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  value={caseNumberInput}
+                  onChange={(e) => setCaseNumberInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLookup()}
+                  placeholder="예: 2016다271226"
+                  className="input-field pl-10 h-[50px]"
+                  disabled={loadingCase}
+                  autoFocus
+                />
+              </div>
               <button
                 onClick={handleLookup}
                 disabled={!caseNumberInput.trim() || loadingCase}
-                className="btn-primary rounded-xl whitespace-nowrap"
+                className="btn-primary h-[50px] w-full sm:w-auto min-w-[100px]"
               >
                 {loadingCase ? (
-                  <>
-                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    조회 중
-                  </>
-                ) : "판례 조회"}
+                  <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                ) : "조회"}
               </button>
             </div>
-            <div className="mt-5">
-              <p className="text-xs text-gray-400 mb-2.5">예시 사건번호</p>
+
+            <div className="mt-8 pt-6 border-t border-[#E5E5EA]">
+              <p className="text-[12px] font-semibold text-[#8E8E93] mb-3 uppercase tracking-wide">추천 판례</p>
               <div className="flex flex-wrap gap-2">
                 {["2016다271226", "2019다272855", "2021다264253", "2020다209815"].map((num) => (
                   <button
                     key={num}
-                    onClick={() => setCaseNumberInput(num)}
-                    className="text-xs px-3 py-1.5 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors font-mono"
+                    onClick={() => {
+                        setCaseNumberInput(num);
+                        // Optional: automatically trigger lookup on click?
+                        // handleLookup(); 
+                    }}
+                    className="text-[13px] px-3 py-1.5 bg-[#F2F2F7] rounded-full text-[#636366] hover:bg-[#E5E5EA] transition-colors font-mono"
                   >
                     {num}
                   </button>
@@ -381,100 +408,84 @@ export default function GeneratePage() {
           </div>
         )}
 
-        {/* Step: Preview */}
+        {/* Step 2: Preview */}
         {step === "preview" && caseData && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <CaseInfoCard data={caseData} />
-            <div className="flex gap-2.5 justify-end">
-              <button onClick={handleReset} className="btn-secondary">
+            
+            <div className="flex gap-3 justify-end">
+              <button onClick={handleReset} className="btn-secondary h-[50px]">
                 다시 입력
               </button>
-              <button onClick={handleGenerate} className="btn-gold">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                문제 생성
+              <button onClick={handleGenerate} className="btn-primary h-[50px]">
+                <SparklesIcon className="w-5 h-5" />
+                문제 생성하기
               </button>
             </div>
           </div>
         )}
 
-        {/* Step: Generating */}
+        {/* Step 3: Generating */}
         {step === "generating" && (
-          <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-14 text-center">
-            <div className="w-14 h-14 rounded-full bg-navy-50 flex items-center justify-center mx-auto mb-5">
-              <svg className="animate-spin w-7 h-7 text-navy-500" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
+          <div className="card p-12 text-center animate-in fade-in zoom-in-95 duration-500">
+            <div className="w-16 h-16 rounded-full bg-[#007AFF]/10 flex items-center justify-center mx-auto mb-6">
+              <ArrowPathIcon className="w-8 h-8 text-[#007AFF] animate-spin" />
             </div>
-            <h3 className="font-serif font-bold text-gray-900 text-lg mb-2">문제를 생성하고 있습니다</h3>
-            <p className="text-gray-400 text-sm">Gemini가 변시 형식의 사례형 문제와 해설을 작성 중입니다.</p>
-            <p className="text-gray-300 text-xs mt-1.5">약 15~30초 소요될 수 있습니다.</p>
+            <h3 className="text-[20px] font-bold text-[#1C1C1E] mb-2">AI가 문제를 만들고 있어요</h3>
+            <p className="text-[#8E8E93] text-[15px]">
+              판례를 분석하여 변호사시험 형식으로 구성하고 있습니다.
+              <br />잠시만 기다려주세요.
+            </p>
           </div>
         )}
 
-        {/* Step: Done */}
+        {/* Step 4: Done */}
         {step === "done" && caseData && generatedText && (
-          <div className="space-y-5">
-            {/* Case reference chip */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-gray-400">기반 판례</span>
-              <span className="text-xs font-semibold text-navy-700 bg-navy-50 px-2.5 py-1 rounded-full border border-navy-100 font-mono">{caseData.caseNumber}</span>
-              {caseData.caseName && <span className="text-xs text-gray-500">{caseData.caseName}</span>}
-              {caseData.court && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{caseData.court}</span>}
-            </div>
+          <div className="space-y-6">
+            {/* Generated Content Display */}
+            <GeneratedContent content={generatedText} />
 
-            {/* Generated content */}
-            <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5 sm:p-7">
-              <GeneratedContent content={generatedText} />
-            </div>
-
-            {/* Actions */}
-            <div className="flex flex-wrap gap-2.5 justify-between">
-              <button onClick={handleReset} className="btn-secondary text-sm">
-                새 문제 생성
+            {/* Bottom Actions */}
+            <div className="card p-5 bg-[#F9F9FB] border border-[#E5E5EA] flex flex-col sm:flex-row items-center justify-between gap-4">
+              <button 
+                onClick={handleReset} 
+                className="text-[15px] font-medium text-[#8E8E93] hover:text-[#1C1C1E] transition-colors flex items-center gap-2"
+              >
+                <ArrowPathIcon className="w-4 h-4" />
+                새로운 문제 만들기
               </button>
-              <div className="flex gap-2.5">
-                <button onClick={handleGenerate} className="btn-secondary text-sm">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  재생성
+              
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                 <button 
+                  onClick={handleGenerate} 
+                  className="flex-1 sm:flex-none btn-secondary h-[44px]"
+                >
+                  <ArrowPathIcon className="w-4 h-4" />
+                  다시 생성
                 </button>
                 {saved ? (
-                  <div className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-green-100 text-green-700 text-sm font-semibold">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
+                   <button disabled className="flex-1 sm:flex-none bg-[#34C759] text-white px-5 py-2.5 rounded-full font-medium text-[15px] inline-flex items-center justify-center gap-2 cursor-default shadow-sm">
+                    <CheckCircleIcon className="w-5 h-5" />
                     저장됨
-                  </div>
+                  </button>
                 ) : (
-                  <button onClick={handleSave} disabled={saving} className="btn-gold text-sm">
+                  <button 
+                    onClick={handleSave} 
+                    disabled={saving} 
+                    className="flex-1 sm:flex-none btn-primary h-[44px] bg-[#34C759] hover:bg-[#2DB14E]"
+                  >
                     {saving ? (
+                      <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    ) : (
                       <>
-                        <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        저장 중
+                        <ShareIcon className="w-4 h-4" />
+                        공유하기
                       </>
-                    ) : "커뮤니티에 공유"}
+                    )}
                   </button>
                 )}
               </div>
             </div>
-
-            {saved && (
-              <div className="text-center">
-                <button
-                  onClick={() => router.push("/community")}
-                  className="text-sm text-navy-600 hover:text-navy-800 font-medium"
-                >
-                  커뮤니티에서 확인하기 →
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>

@@ -109,12 +109,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: `'${trimmed}'에 해당하는 판례를 찾지 못했습니다. 사건번호를 다시 확인해 주세요.` });
     }
 
-    // Find best matching item (exact case number match preferred)
+    // Find best matching item (exact case number match required)
     const normalized = trimmed.replace(/\s/g, "");
     const found =
       items.find((item) => (item["사건번호"] ?? "").replace(/\s/g, "") === normalized) ||
-      items.find((item) => (item["사건번호"] ?? "").includes(normalized)) ||
-      items[0];
+      items.find((item) => (item["사건번호"] ?? "").replace(/\s/g, "").includes(normalized)) ||
+      items.find((item) => normalized.includes((item["사건번호"] ?? "").replace(/\s/g, "")));
+
+    if (!found) {
+      return res.status(404).json({ error: `'${trimmed}'에 해당하는 판례를 찾지 못했습니다. 사건번호를 다시 확인해 주세요.` });
+    }
 
     const serialNo = found["판례정보일련번호"] ?? found["일련번호"] ?? "";
 
