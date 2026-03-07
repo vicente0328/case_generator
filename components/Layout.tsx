@@ -7,6 +7,7 @@ import AuthModal from "./AuthModal";
 interface LayoutProps {
   children: React.ReactNode;
   title?: string;
+  onLogoClick?: () => void;
 }
 
 function GuideModal({ onClose }: { onClose: () => void }) {
@@ -56,7 +57,7 @@ function GuideModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-export default function Layout({ children, title = "Case Generator" }: LayoutProps) {
+export default function Layout({ children, title = "Case Generator", onLogoClick }: LayoutProps) {
   const { user, logout } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
@@ -72,7 +73,7 @@ export default function Layout({ children, title = "Case Generator" }: LayoutPro
       <div className="min-h-screen bg-[#F6F6F7] flex flex-col">
         <header className="sticky top-0 z-40 h-[52px] bg-white/90 backdrop-blur-xl border-b border-zinc-100 flex items-center">
           <div className="w-full max-w-[800px] mx-auto px-6 flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2 group">
+            <Link href="/" onClick={onLogoClick} className="flex items-center gap-2 group">
               <div className="w-[26px] h-[26px] bg-zinc-900 rounded-[7px] flex items-center justify-center flex-shrink-0">
                 <span className="text-white text-[10px] font-bold tracking-tighter">CG</span>
               </div>

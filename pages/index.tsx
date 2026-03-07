@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, deleteDoc } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
 
 type Step = "input" | "preview" | "generating" | "done";
@@ -14,6 +14,7 @@ interface Comment {
   userName: string;
   text: string;
   createdAt: { seconds: number } | null;
+  deleted?: boolean;
 }
 
 interface PostPreview {
@@ -199,6 +200,7 @@ function Comments({ postId }: { postId: string }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     getDocs(query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc")))
@@ -212,22 +214,37 @@ function Comments({ postId }: { postId: string }) {
   const submit = async () => {
     if (!text.trim() || !user || submitting) return;
     setSubmitting(true);
+    setError("");
     try {
       const name = user.displayName || user.email?.split("@")[0] || "익명";
       const ref = await addDoc(collection(db, "posts", postId, "comments"), {
-        userId: user.uid, userName: name, text: text.trim(), createdAt: serverTimestamp(),
+        userId: user.uid, userName: name, text: text.trim(), createdAt: serverTimestamp(), deleted: false,
       });
-      setComments(p => [...p, { id: ref.id, userId: user.uid, userName: name, text: text.trim(), createdAt: null }]);
+      setComments(p => [...p, { id: ref.id, userId: user.uid, userName: name, text: text.trim(), createdAt: null, deleted: false }]);
       setText("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "댓글 등록에 실패했습니다.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  const deleteComment = async (c: Comment) => {
+    if (!user || user.uid !== c.userId) return;
+    try {
+      await updateDoc(doc(db, "posts", postId, "comments", c.id), { deleted: true, text: "" });
+      setComments(p => p.map(x => x.id === c.id ? { ...x, deleted: true, text: "" } : x));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "삭제에 실패했습니다.");
+    }
+  };
+
+  const visibleCount = comments.filter(c => !c.deleted).length;
+
   return (
     <div className="mt-8 pt-7 border-t border-zinc-100">
       <p className="text-[13px] font-semibold text-zinc-900 mb-5">
-        댓글{comments.length > 0 ? ` ${comments.length}` : ""}
+        댓글{visibleCount > 0 ? ` ${visibleCount}` : ""}
       </p>
 
       {!loading && comments.length > 0 && (
@@ -235,11 +252,27 @@ function Comments({ postId }: { postId: string }) {
           {comments.map(c => (
             <div key={c.id} className="flex gap-3">
               <div className="w-7 h-7 rounded-full bg-zinc-100 flex items-center justify-center flex-shrink-0 text-[11px] font-semibold text-zinc-500">
-                {c.userName.charAt(0).toUpperCase()}
+                {c.deleted ? "−" : c.userName.charAt(0).toUpperCase()}
               </div>
-              <div className="pt-0.5">
-                <span className="text-[12px] font-medium text-zinc-500">{c.userName}</span>
-                <p className="text-[14px] text-zinc-700 leading-snug mt-0.5">{c.text}</p>
+              <div className="pt-0.5 flex-1">
+                {c.deleted ? (
+                  <p className="text-[13px] text-zinc-300 italic">(삭제됨)</p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[12px] font-medium text-zinc-500">{c.userName}</span>
+                      {user && user.uid === c.userId && (
+                        <button
+                          onClick={() => deleteComment(c)}
+                          className="text-[11px] text-zinc-300 hover:text-red-400 transition-colors"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[14px] text-zinc-700 leading-snug mt-0.5">{c.text}</p>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -251,21 +284,24 @@ function Comments({ postId }: { postId: string }) {
       )}
 
       {user ? (
-        <div className="flex gap-2">
-          <input
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && !e.shiftKey && submit()}
-            placeholder="댓글 남기기…"
-            className="flex-1 h-9 bg-zinc-50 border border-zinc-200 rounded-lg px-3 text-[14px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
-          />
-          <button
-            onClick={submit}
-            disabled={!text.trim() || submitting}
-            className="text-[13px] font-medium text-zinc-400 hover:text-zinc-700 disabled:text-zinc-200 px-2 transition-colors"
-          >
-            등록
-          </button>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && submit()}
+              placeholder="댓글 남기기…"
+              className="flex-1 h-9 bg-zinc-50 border border-zinc-200 rounded-lg px-3 text-[14px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
+            />
+            <button
+              onClick={submit}
+              disabled={!text.trim() || submitting}
+              className="text-[13px] font-medium text-zinc-400 hover:text-zinc-700 disabled:text-zinc-200 px-2 transition-colors"
+            >
+              {submitting ? "등록 중…" : "등록"}
+            </button>
+          </div>
+          {error && <p className="text-[12px] text-red-500">{error}</p>}
         </div>
       ) : (
         <p className="text-[13px] text-zinc-400">댓글을 남기려면 로그인하세요.</p>
@@ -358,9 +394,11 @@ export default function Home() {
 
     (async () => {
       try {
+        const token = user ? await user.getIdToken() : "";
+        if (!token) { state.error = "로그인이 필요합니다."; state.notify?.(); return; }
         const res = await fetch("/api/generate", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ caseData: data }),
           signal: controller.signal,
         });
@@ -452,9 +490,11 @@ export default function Home() {
 
     prefetchRef.current = null;
     try {
+      const token = user ? await user.getIdToken() : "";
+      if (!token) throw new Error("로그인이 필요합니다.");
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ caseData }),
       });
       if (!res.body) throw new Error("스트림을 받을 수 없습니다.");
@@ -537,7 +577,7 @@ export default function Home() {
   };
 
   return (
-    <Layout title="Case Generator">
+    <Layout title="Case Generator" onLogoClick={reset}>
       <div className="max-w-[800px] mx-auto px-6">
 
         {/* 헤더 텍스트 */}
