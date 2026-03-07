@@ -146,41 +146,68 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const trimmed = caseNumber.trim();
 
-  // 2자리 연도를 4자리로 정규화: 96다3982 → 1996다3982
-  function normalizeYear(cn: string): string {
-    const s = cn.replace(/\s/g, "").replace(/,/g, "");
+  // 사건번호 정규화: 한글/숫자 이외 문자 제거 + 2자리 연도 → 4자리
+  // 예) "2008. 다. 54877." → "2008다54877"
+  // 예) "96다3982" → "1996다3982"
+  function normalizeCase(cn: string): string {
+    const s = cn.replace(/[^가-힣0-9]/g, "");
     return s.replace(/^(\d{2})([가-힣])/, (_, yr, type) => {
       const y = parseInt(yr, 10);
       return `${y >= 90 ? 1900 + y : 2000 + y}${type}`;
     });
   }
 
-  const normalized = normalizeYear(trimmed);
+  const normalized = normalizeCase(trimmed);
 
   try {
-    // Step 1: 검색 (정규화된 연도 기준으로 검색)
-    const searchUrl = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc)}&target=prec&type=JSON&query=${encodeURIComponent(normalized)}&display=10&page=1`;
-    let searchData = await fetchJson(searchUrl);
-    if (!searchData) {
-      searchData = await fetchJson(searchUrl.replace("https://", "http://"));
-    }
-    if (!searchData) {
-      return res.status(502).json({ error: "법제처 API 응답을 파싱하지 못했습니다." });
+    // Step 1: nb 파라미터로 사건번호 직접 검색 (정확도 높음)
+    // nb=2008다54877 형태로 사건번호 전용 검색
+    async function searchByNb(nb: string): Promise<ApiRecord[]> {
+      const url = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc!)}&target=prec&type=JSON&nb=${encodeURIComponent(nb)}&display=5`;
+      let data = await fetchJson(url);
+      if (!data) data = await fetchJson(url.replace("https://", "http://"));
+      return data ? extractItems(data) : [];
     }
 
-    const items = extractItems(searchData);
+    // 정규화된 번호로 먼저 시도, 0건이면 원본으로 재시도
+    let items = await searchByNb(normalized);
+    if (items.length === 0 && normalized !== trimmed) {
+      items = await searchByNb(trimmed);
+    }
+
+    // nb 검색 실패 시 query 검색으로 fallback
     if (items.length === 0) {
-      return res.status(404).json({ error: `'${trimmed}'에 해당하는 판례를 찾지 못했습니다.` });
+      const queryUrl = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc)}&target=prec&type=JSON&query=${encodeURIComponent(normalized)}&display=30&page=1`;
+      let qData = await fetchJson(queryUrl);
+      if (!qData) qData = await fetchJson(queryUrl.replace("https://", "http://"));
+      if (qData) items = extractItems(qData);
+    }
+
+    if (items.length === 0) {
+      const year = parseInt(normalized.match(/^(\d{4})/)?.[1] ?? "0", 10);
+      const oldCase = year > 0 && year < 2000;
+      return res.status(404).json({
+        error: oldCase
+          ? `'${trimmed}'에 해당하는 판례를 찾지 못했습니다. 법제처 API에 수록되지 않은 오래된 판례일 수 있습니다.`
+          : `'${trimmed}'에 해당하는 판례를 찾지 못했습니다.`,
+      });
     }
 
     // Step 2: 사건번호 매칭 (양쪽 모두 정규화하여 비교)
     const found =
-      items.find((item) => normalizeYear(item["사건번호"] ?? "") === normalized) ||
-      items.find((item) => normalizeYear(item["사건번호"] ?? "").includes(normalized)) ||
-      items.find((item) => normalized.includes(normalizeYear(item["사건번호"] ?? "")));
+      items.find((item) => normalizeCase(item["사건번호"] ?? "") === normalized) ||
+      items.find((item) => normalizeCase(item["사건번호"] ?? "").includes(normalized)) ||
+      items.find((item) => normalized.includes(normalizeCase(item["사건번호"] ?? ""))) ||
+      items[0]; // nb 검색은 정확하므로 첫 번째 결과를 최후 수단으로 사용
 
     if (!found) {
-      return res.status(404).json({ error: `'${trimmed}'에 해당하는 판례를 찾지 못했습니다.` });
+      const year = parseInt(normalized.match(/^(\d{4})/)?.[1] ?? "0", 10);
+      const oldCase = year > 0 && year < 2000;
+      return res.status(404).json({
+        error: oldCase
+          ? `'${trimmed}'에 해당하는 판례를 찾지 못했습니다. 법제처 API에 수록되지 않은 오래된 판례일 수 있습니다.`
+          : `'${trimmed}'에 해당하는 판례를 찾지 못했습니다.`,
+      });
     }
 
     console.log("Search result keys:", Object.keys(found));
