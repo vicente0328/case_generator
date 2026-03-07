@@ -164,12 +164,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log("Search result keys:", Object.keys(found));
     console.log("Search result sample:", JSON.stringify(found).slice(0, 500));
 
-    // Step 3: 일련번호 다양한 필드명으로 시도
+    // Step 3: 일련번호 — 실제 API 응답 필드명 기준
     const serialNo =
+      found["판례일련번호"] ??   // 실제 search 결과 필드명
       found["판례정보일련번호"] ??
       found["일련번호"] ??
-      found["prec_seq"] ??
-      found["precSeq"] ??
       found["id"] ??
       "";
 
