@@ -332,6 +332,16 @@ function stripHtml(text: string): string {
   return text.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 
+function formatOutlineBody(text: string): string {
+  // 목차 마커(1. 가. 1) (1) 가) 나) 등) 앞에 줄바꿈 삽입
+  return text
+    .replace(/(\S[ \t]+)(\d+\. )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
+    .replace(/(\S[ \t]+)([가나다라마바사아자차카타파하]\. )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
+    .replace(/(\S[ \t]+)(\(\d+\) )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
+    .replace(/(\S[ \t]+)(\d+\) )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker)
+    .replace(/(\S[ \t]+)([가나다라마바사아자차카타파하]\) )/g, (_m, pre, marker) => pre.trimEnd() + "\n" + marker);
+}
+
 function parseLegalSections(text: string): { heading: string; body: string }[] {
   const sections: { heading: string; body: string }[] = [];
   const markerRe = /【([^】]+)】/g;
@@ -381,14 +391,14 @@ function FullTextSection({ fullText }: { fullText: string }) {
                     </p>
                   )}
                   {s.body && (
-                    <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{s.body}</p>
+                    <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{formatOutlineBody(s.body)}</p>
                   )}
                 </div>
               ))}
             </div>
           ) : (
             <div className="px-6 py-6">
-              <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{clean}</p>
+              <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{formatOutlineBody(clean)}</p>
             </div>
           )}
         </div>
