@@ -146,9 +146,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const trimmed = caseNumber.trim();
 
+  // 2자리 연도를 4자리로 정규화: 96다3982 → 1996다3982
+  function normalizeYear(cn: string): string {
+    const s = cn.replace(/\s/g, "").replace(/,/g, "");
+    return s.replace(/^(\d{2})([가-힣])/, (_, yr, type) => {
+      const y = parseInt(yr, 10);
+      return `${y >= 90 ? 1900 + y : 2000 + y}${type}`;
+    });
+  }
+
+  const normalized = normalizeYear(trimmed);
+
   try {
-    // Step 1: 검색
-    const searchUrl = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc)}&target=prec&type=JSON&query=${encodeURIComponent(trimmed)}&display=10&page=1`;
+    // Step 1: 검색 (정규화된 연도 기준으로 검색)
+    const searchUrl = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc)}&target=prec&type=JSON&query=${encodeURIComponent(normalized)}&display=10&page=1`;
     let searchData = await fetchJson(searchUrl);
     if (!searchData) {
       searchData = await fetchJson(searchUrl.replace("https://", "http://"));
@@ -162,12 +173,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: `'${trimmed}'에 해당하는 판례를 찾지 못했습니다.` });
     }
 
-    // Step 2: 사건번호 매칭
-    const normalized = trimmed.replace(/\s/g, "");
+    // Step 2: 사건번호 매칭 (양쪽 모두 정규화하여 비교)
     const found =
-      items.find((item) => (item["사건번호"] ?? "").replace(/\s/g, "") === normalized) ||
-      items.find((item) => (item["사건번호"] ?? "").replace(/\s/g, "").includes(normalized)) ||
-      items.find((item) => normalized.includes((item["사건번호"] ?? "").replace(/\s/g, "")));
+      items.find((item) => normalizeYear(item["사건번호"] ?? "") === normalized) ||
+      items.find((item) => normalizeYear(item["사건번호"] ?? "").includes(normalized)) ||
+      items.find((item) => normalized.includes(normalizeYear(item["사건번호"] ?? "")));
 
     if (!found) {
       return res.status(404).json({ error: `'${trimmed}'에 해당하는 판례를 찾지 못했습니다.` });
