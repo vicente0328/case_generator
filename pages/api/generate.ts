@@ -103,7 +103,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash-thinking-exp-01-21",
+      model: "gemini-2.5-pro",
       systemInstruction: SYSTEM_PROMPT,
     });
 
