@@ -163,7 +163,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Step 1: nb 파라미터로 사건번호 직접 검색 (정확도 높음)
     // nb=2008다54877 형태로 사건번호 전용 검색
     async function searchByNb(nb: string): Promise<ApiRecord[]> {
-      const url = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc!)}&target=prec&type=JSON&nb=${encodeURIComponent(nb)}&display=5`;
+      // nb 파라미터는 한글을 URL 인코딩하면 법제처 서버가 인식 못함 — 그대로 전달
+      const url = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc!)}&target=prec&type=JSON&nb=${nb}&display=5`;
       let data = await fetchJson(url);
       if (!data) data = await fetchJson(url.replace("https://", "http://"));
       return data ? extractItems(data) : [];
