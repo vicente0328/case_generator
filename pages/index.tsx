@@ -539,7 +539,7 @@ export default function Home() {
             <CaseCard data={caseData} onReset={reset} />
             <div className="mt-4 flex justify-end">
               <button
-                onClick={generate}
+                onClick={() => generate()}
                 className="h-10 px-5 bg-zinc-900 text-white rounded-xl text-[14px] font-semibold hover:bg-zinc-700 transition-colors flex items-center gap-2"
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
