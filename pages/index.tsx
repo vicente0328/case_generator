@@ -278,6 +278,7 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [postId, setPostId] = useState<string | null>(null);
+  const [checkedSteps, setCheckedSteps] = useState<boolean[]>([false, false, false, false, false]);
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const prefetchRef = useRef<{
@@ -290,6 +291,20 @@ export default function Home() {
   useEffect(() => {
     if (router.isReady && typeof router.query.case === "string") setInput(router.query.case);
   }, [router.isReady, router.query.case]);
+
+  const PROGRESS_STEPS = ["판례 원문 분석", "핵심 법리 추출", "사실관계 구성", "문항 및 배점 설정", "해설 및 모범답안 작성"];
+  const STEP_DELAYS = [1500, 4000, 8000, 13000];
+
+  useEffect(() => {
+    if (step !== "generating") {
+      setCheckedSteps([false, false, false, false, false]);
+      return;
+    }
+    const timers = STEP_DELAYS.map((delay, i) =>
+      setTimeout(() => setCheckedSteps(prev => prev.map((v, j) => j <= i ? true : v)), delay)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [step]);
 
   const runPrefetch = (data: CaseData) => {
     prefetchAbortRef.current?.abort();
@@ -553,6 +568,27 @@ export default function Home() {
 
         {/* ── 생성 중 (첫 응답 전) — 스켈레톤 ── */}
         {step === "generating" && (
+          <div className="space-y-4">
+            {/* 진행 상황 카드 */}
+            <div className="bg-white rounded-xl border border-zinc-100 px-6 py-5 flex gap-4 items-start">
+              <div className="w-4 h-4 border-2 border-zinc-200 border-t-zinc-600 rounded-full animate-spin mt-0.5 flex-shrink-0" />
+              <div className="space-y-2.5">
+                {PROGRESS_STEPS.map((label, i) => (
+                  <div key={i} className="flex items-center gap-2.5">
+                    {checkedSteps[i] ? (
+                      <svg className="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border-2 border-zinc-200 flex-shrink-0" />
+                    )}
+                    <span className={`text-[13px] transition-colors ${checkedSteps[i] ? "text-zinc-300 line-through" : "text-zinc-600"}`}>
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           <div className="space-y-4 animate-pulse">
             <div className="bg-white rounded-xl border border-zinc-100 overflow-hidden">
               <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/60 flex items-center gap-3">
@@ -592,6 +628,7 @@ export default function Home() {
                 <div className="h-3.5 bg-zinc-100 rounded-full w-[65%]" />
               </div>
             </div>
+          </div>
           </div>
         )}
 
