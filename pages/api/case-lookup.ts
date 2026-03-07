@@ -175,14 +175,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       items = await searchByNb(trimmed);
     }
 
-    // nb 검색 실패 시 query 검색으로 fallback
-    if (items.length === 0) {
-      const queryUrl = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc)}&target=prec&type=JSON&query=${encodeURIComponent(normalized)}&display=30&page=1`;
-      let qData = await fetchJson(queryUrl);
-      if (!qData) qData = await fetchJson(queryUrl.replace("https://", "http://"));
-      if (qData) items = extractItems(qData);
-    }
-
     if (items.length === 0) {
       const year = parseInt(normalized.match(/^(\d{4})/)?.[1] ?? "0", 10);
       const oldCase = year > 0 && year < 2000;
@@ -193,12 +185,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // Step 2: 사건번호 매칭 (양쪽 모두 정규화하여 비교)
+    // Step 2: 사건번호 정확 매칭 (양쪽 모두 정규화하여 비교)
+    // nb 검색 결과도 완전히 일치하는 것만 사용 — 부정확한 결과 방지
     const found =
       items.find((item) => normalizeCase(item["사건번호"] ?? "") === normalized) ||
-      items.find((item) => normalizeCase(item["사건번호"] ?? "").includes(normalized)) ||
-      items.find((item) => normalized.includes(normalizeCase(item["사건번호"] ?? ""))) ||
-      items[0]; // nb 검색은 정확하므로 첫 번째 결과를 최후 수단으로 사용
+      items.find((item) => normalizeCase(item["사건번호"] ?? "") === normalizeCase(trimmed));
 
     if (!found) {
       const year = parseInt(normalized.match(/^(\d{4})/)?.[1] ?? "0", 10);
