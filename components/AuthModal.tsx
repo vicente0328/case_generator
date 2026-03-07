@@ -21,8 +21,9 @@ export default function AuthModal({ onClose }: AuthModalProps) {
     try {
       await signInWithGoogle();
       onClose();
-    } catch {
-      setError("Google 로그인에 실패했습니다. Firebase Console에서 Google 제공업체를 활성화했는지 확인하세요.");
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setError(`[${e.code ?? "unknown"}] ${e.message ?? "Google 로그인 실패"}`);
     } finally {
       setLoading(false);
     }
