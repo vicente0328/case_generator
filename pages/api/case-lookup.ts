@@ -131,6 +131,145 @@ function extractFromFullText(fullText: string, section: "판시사항" | "판결
   return "";
 }
 
+// ─── glaw.scourt.go.kr (대법원 종합법률정보) 스크래핑 ───────────────────────
+// 저작권 정책: 본문(이유) 섹션 및 사실적 메타데이터만 활용
+// 판시사항/판결요지/참조조문/참조판례는 대법원 저작권 보호 대상이므로 추출하지 않음
+
+const GLAW_BASE = "http://glaw.scourt.go.kr";
+const GLAW_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+};
+
+async function fetchHtml(url: string, referer?: string): Promise<string | null> {
+  try {
+    const r = await fetch(url, {
+      headers: referer ? { ...GLAW_HEADERS, Referer: referer } : GLAW_HEADERS,
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const buf = await r.arrayBuffer();
+    // EUC-KR 인코딩 대응 (법원 사이트는 EUC-KR 사용 가능)
+    try {
+      return new TextDecoder("utf-8").decode(buf);
+    } catch {
+      return new TextDecoder("euc-kr").decode(buf);
+    }
+  } catch (e) {
+    console.error("fetchHtml failed:", url, e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+// glaw 검색 결과 HTML에서 판례 상세 경로 추출
+function extractGlawDetailPath(html: string): string | null {
+  // 방법 1: href 링크에서 sjo040.do 경로 추출
+  const hrefMatch = html.match(/href=['"]([^'"]*sjo040[^'"]*)['"]/);
+  if (hrefMatch) return hrefMatch[1].startsWith("/") ? hrefMatch[1] : `/wsjo/panre/${hrefMatch[1]}`;
+
+  // 방법 2: script/data 속성에서 panreSeq 또는 csId 추출
+  const seqPatterns = [
+    /panreSeq['"]?\s*[=:]\s*['"]?(\d+)/,
+    /csId['"]?\s*[=:]\s*['"]?(\d+)/,
+    /'panreSeq'\s*,\s*'(\d+)'/,
+    /goDetail\(['"]?(\d+)/,
+  ];
+  for (const p of seqPatterns) {
+    const m = html.match(p);
+    if (m) return `/wsjo/panre/sjo040.do?prevUrl=sjo060&panreSeq=${m[1]}`;
+  }
+  return null;
+}
+
+// glaw 상세 페이지 HTML에서 사건 정보 추출
+function parseGlawDetail(html: string, inputCaseNumber: string): CaseData | null {
+  const text = stripHtml(html);
+  if (text.length < 200) return null;
+
+  // 사건번호 (사실 정보 — 저작권 해당 없음)
+  const caseNumberMatch =
+    text.match(/사건번호\s*[:\s]\s*([\w가-힣]+)/) ||
+    text.match(/([\d]{4}[가-힣]+[\d]+)/);
+
+  // 사건명 [보증채무금] 형태 또는 "사건명" 필드
+  const caseNameMatch =
+    text.match(/\[([^\]]{2,30})\]/) ||
+    text.match(/사건명\s*[:\s]\s*([^\n]+)/);
+
+  // 법원명
+  const courtMatch = text.match(/(대법원|고등법원|지방법원|가정법원|행정법원)[^\n]*/);
+
+  // 선고일자 (YYYY. M. D. 또는 YYYYMMDD 형태)
+  const dateMatch = text.match(/(\d{4})[.\s]+(\d{1,2})[.\s]+(\d{1,2})/);
+  const date = dateMatch
+    ? `${dateMatch[1]}${dateMatch[2].padStart(2, "0")}${dateMatch[3].padStart(2, "0")}`
+    : "";
+
+  // 본문(이유) 추출 — 저작권 없는 부분
+  // 전문 전체를 fullText로, 판시사항/판결요지는 포함하지 않음
+  const iuStart = text.indexOf("【이유】");
+  const juStart = text.indexOf("【전문】");
+  const fullText = iuStart >= 0
+    ? text.slice(iuStart).trim()
+    : juStart >= 0
+      ? text.slice(juStart).trim()
+      : text.slice(0, 8000);
+
+  if (fullText.length < 100) return null;
+
+  return {
+    caseNumber: caseNumberMatch?.[1] || inputCaseNumber,
+    caseName: caseNameMatch?.[1]?.trim() || "",
+    court: courtMatch?.[1] || "",
+    date,
+    rulingPoints: "",  // 저작권 보호 대상 — 스크래핑 안 함
+    rulingRatio: "",   // 저작권 보호 대상 — 스크래핑 안 함
+    fullText: fullText.slice(0, 10000),
+  };
+}
+
+async function scrapeGlaw(caseNum: string, normalizedNum: string): Promise<CaseData | null> {
+  const searchUrl = `${GLAW_BASE}/wsjo/panre/sjo060.do?q=${encodeURIComponent(caseNum)}&tabId=0&spId=`;
+  console.log("[glaw] searching:", searchUrl);
+
+  const searchHtml = await fetchHtml(searchUrl);
+  if (!searchHtml) {
+    console.log("[glaw] search failed — server unreachable");
+    return null;
+  }
+
+  // 검색 결과에서 상세 경로 추출
+  let detailPath = extractGlawDetailPath(searchHtml);
+
+  // 경로 못 찾으면 정규화된 번호로 재시도
+  if (!detailPath && normalizedNum !== caseNum) {
+    const searchHtml2 = await fetchHtml(
+      `${GLAW_BASE}/wsjo/panre/sjo060.do?q=${encodeURIComponent(normalizedNum)}&tabId=0&spId=`
+    );
+    if (searchHtml2) detailPath = extractGlawDetailPath(searchHtml2);
+  }
+
+  if (!detailPath) {
+    console.log("[glaw] no detail path found in search results");
+    return null;
+  }
+
+  const detailUrl = detailPath.startsWith("http") ? detailPath : `${GLAW_BASE}${detailPath}`;
+  console.log("[glaw] fetching detail:", detailUrl);
+
+  const detailHtml = await fetchHtml(detailUrl, searchUrl);
+  if (!detailHtml) {
+    console.log("[glaw] detail fetch failed");
+    return null;
+  }
+
+  const result = parseGlawDetail(detailHtml, caseNum);
+  if (result) console.log("[glaw] success:", result.caseNumber, result.court, result.date);
+  else console.log("[glaw] parse failed — content too short or not found");
+  return result;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).end();
 
@@ -197,12 +336,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (qData) found = matchExact(extractItems(qData));
     }
 
+    // 법제처 DRF API에서 찾지 못한 경우 → glaw.scourt.go.kr 스크래핑 시도
     if (!found) {
+      const glawResult = await scrapeGlaw(trimmed, normalized);
+      if (glawResult) {
+        return res.status(200).json(glawResult);
+      }
+
       const year = parseInt(normalized.match(/^(\d{4})/)?.[1] ?? "0", 10);
       const oldCase = year > 0 && year < 2000;
       return res.status(404).json({
         error: oldCase
-          ? `'${trimmed}'에 해당하는 판례를 찾지 못했습니다. 법제처 API에 수록되지 않은 오래된 판례일 수 있습니다.`
+          ? `'${trimmed}'에 해당하는 판례를 찾지 못했습니다. 법제처 및 대법원 종합법률정보에서 확인되지 않는 판례입니다.`
           : `'${trimmed}'에 해당하는 판례를 찾지 못했습니다.`,
       });
     }
