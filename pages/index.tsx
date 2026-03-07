@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, where } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
 
 type Step = "input" | "preview" | "generating" | "done";
@@ -19,6 +19,7 @@ interface Comment {
 
 interface PostPreview {
   id: string;
+  userId?: string | null;
   caseNumber: string;
   caseName: string;
   court: string;
@@ -325,6 +326,11 @@ export default function Home() {
   const [postId, setPostId] = useState<string | null>(null);
   const [voted, setVoted] = useState<"likes" | "needsReview" | null>(null);
   const [feedPosts, setFeedPosts] = useState<PostPreview[]>([]);
+  const [existingPost, setExistingPost] = useState<PostPreview | null>(null);
+  const [feedSearch, setFeedSearch] = useState("");
+  const [feedFilter, setFeedFilter] = useState<"all" | "mine">("all");
+  const [displayCount, setDisplayCount] = useState(10);
+  const [feedLoading, setFeedLoading] = useState(true);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([false, false, false, false, false]);
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
@@ -355,13 +361,11 @@ export default function Home() {
   }, [step]);
 
   useEffect(() => {
-    getDocs(query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(20)))
-      .then(snap => {
-        const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as PostPreview));
-        const shuffled = [...all].sort(() => Math.random() - 0.5).slice(0, 2);
-        setFeedPosts(shuffled);
-      })
-      .catch(() => {});
+    setFeedLoading(true);
+    getDocs(query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(200)))
+      .then(snap => setFeedPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as PostPreview))))
+      .catch(() => {})
+      .finally(() => setFeedLoading(false));
   }, []);
 
   useEffect(() => {
@@ -437,7 +441,7 @@ export default function Home() {
   const lookup = async () => {
     const num = input.trim();
     if (!num) return;
-    setError(""); setLoadingCase(true);
+    setError(""); setLoadingCase(true); setExistingPost(null);
     prefetchAbortRef.current?.abort();
     prefetchRef.current = null;
     try {
@@ -445,7 +449,23 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "판례 조회 실패");
       setCaseData(data); setStep("preview");
-      runPrefetch(data);
+
+      // 기존 문제 조회 (병렬)
+      getDocs(query(
+        collection(db, "posts"),
+        where("caseNumber", "==", data.caseNumber),
+        orderBy("createdAt", "desc"),
+        limit(1)
+      )).then(snap => {
+        if (!snap.empty) {
+          const d = snap.docs[0];
+          setExistingPost({ id: d.id, ...d.data() } as PostPreview);
+          prefetchAbortRef.current?.abort(); // 기존 문제 있으면 프리페치 불필요
+          prefetchRef.current = null;
+        } else {
+          runPrefetch(data); // 기존 문제 없으면 바로 프리페치 시작
+        }
+      }).catch(() => runPrefetch(data));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "조회 중 오류가 발생했습니다.");
     } finally {
@@ -573,7 +593,7 @@ export default function Home() {
     prefetchRef.current = null;
     autoSaveRef.current = false;
     setStep("input"); setCaseData(null); setGenerated(""); setError("");
-    setPostId(null); setInput(""); setVoted(null);
+    setPostId(null); setInput(""); setVoted(null); setExistingPost(null);
   };
 
   return (
@@ -633,34 +653,109 @@ export default function Home() {
               </div>
             </div>
 
-            {feedPosts.length > 0 && (
-              <div className="mt-10">
-                <p className="text-[11px] font-semibold text-zinc-300 uppercase tracking-widest mb-4">최근 생성된 문제</p>
-                <div className="space-y-2">
-                  {feedPosts.map(post => (
-                    <button
-                      key={post.id}
-                      onClick={() => viewPost(post)}
-                      className="w-full bg-white rounded-xl border border-zinc-100 px-5 py-4 text-left hover:border-zinc-300 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[14px] font-mono font-semibold text-zinc-800">{post.caseNumber}</p>
-                          <p className="text-[12px] text-zinc-400 mt-0.5">
-                            {[post.court, post.date && formatDate(post.date)].filter(Boolean).join(" · ")}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3 text-[12px] text-zinc-400 flex-shrink-0">
-                          <span>추천 {post.likes}</span>
-                          <span className="text-zinc-200">·</span>
-                          <span>{post.userName}</span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+            {/* ── 문제 피드 ── */}
+            <div className="mt-10">
+              {/* 헤더: 탭 + 검색 */}
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex bg-zinc-100 p-0.5 rounded-lg flex-shrink-0">
+                  <button
+                    onClick={() => { setFeedFilter("all"); setDisplayCount(10); }}
+                    className={`px-3 py-1 text-[12px] font-medium rounded-md transition-all ${feedFilter === "all" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
+                  >
+                    전체
+                  </button>
+                  <button
+                    onClick={() => { setFeedFilter("mine"); setDisplayCount(10); }}
+                    className={`px-3 py-1 text-[12px] font-medium rounded-md transition-all ${feedFilter === "mine" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
+                  >
+                    내 문제
+                  </button>
+                </div>
+                <div className="relative flex-1">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-300 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
+                  <input
+                    value={feedSearch}
+                    onChange={e => { setFeedSearch(e.target.value); setDisplayCount(10); }}
+                    placeholder="사건번호 또는 사건명 검색…"
+                    className="w-full h-8 bg-white border border-zinc-200 rounded-lg pl-8 pr-3 text-[13px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
+                  />
                 </div>
               </div>
-            )}
+
+              {/* 목록 */}
+              {(() => {
+                const source = feedFilter === "mine"
+                  ? feedPosts.filter(p => p.userId === user?.uid)
+                  : feedPosts;
+                const q = feedSearch.trim().toLowerCase();
+                const filtered = q
+                  ? source.filter(p =>
+                      p.caseNumber.toLowerCase().includes(q) ||
+                      (p.caseName || "").toLowerCase().includes(q)
+                    )
+                  : source;
+                const visible = filtered.slice(0, displayCount);
+
+                if (feedLoading) return (
+                  <div className="space-y-2">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="bg-white rounded-xl border border-zinc-100 px-5 py-4 animate-pulse">
+                        <div className="h-3.5 bg-zinc-100 rounded-full w-[40%] mb-2" />
+                        <div className="h-3 bg-zinc-100 rounded-full w-[25%]" />
+                      </div>
+                    ))}
+                  </div>
+                );
+
+                if (feedFilter === "mine" && !user) return (
+                  <p className="text-[13px] text-zinc-400 py-4">로그인하면 내 문제를 볼 수 있습니다.</p>
+                );
+
+                if (filtered.length === 0) return (
+                  <p className="text-[13px] text-zinc-300 py-4">
+                    {q ? `"${feedSearch}"에 해당하는 문제가 없습니다.` : feedFilter === "mine" ? "아직 생성한 문제가 없습니다." : "아직 생성된 문제가 없습니다."}
+                  </p>
+                );
+
+                return (
+                  <>
+                    <div className="space-y-2">
+                      {visible.map(post => (
+                        <button
+                          key={post.id}
+                          onClick={() => viewPost(post)}
+                          className="w-full bg-white rounded-xl border border-zinc-100 px-5 py-4 text-left hover:border-zinc-300 transition-colors"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[14px] font-mono font-semibold text-zinc-800 truncate">{post.caseNumber}</p>
+                              <p className="text-[12px] text-zinc-400 mt-0.5 truncate">
+                                {[post.court, post.date && formatDate(post.date), post.caseName].filter(Boolean).join(" · ")}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-3 text-[12px] text-zinc-400 flex-shrink-0">
+                              <span>추천 {post.likes}</span>
+                              <span className="text-zinc-200">·</span>
+                              <span className="max-w-[60px] truncate">{post.userName}</span>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    {filtered.length > displayCount && (
+                      <button
+                        onClick={() => setDisplayCount(c => c + 10)}
+                        className="w-full mt-3 h-9 text-[13px] text-zinc-400 hover:text-zinc-700 border border-zinc-200 hover:border-zinc-300 rounded-xl transition-colors"
+                      >
+                        더 보기 ({filtered.length - displayCount}개 남음)
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           </div>
         )}
 
@@ -668,17 +763,42 @@ export default function Home() {
         {step === "preview" && caseData && (
           <div>
             <CaseCard data={caseData} onReset={reset} />
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={() => generate()}
-                className="h-10 px-5 bg-zinc-900 text-white rounded-xl text-[14px] font-semibold hover:bg-zinc-700 transition-colors flex items-center gap-2"
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-                문제 생성하기
-              </button>
-            </div>
+
+            {existingPost ? (
+              /* 기존 문제 있음 → 선택지 제시 */
+              <div className="mt-4 bg-white rounded-xl border border-zinc-100 px-5 py-4">
+                <p className="text-[13px] text-zinc-500 mb-3">
+                  이 판례로 생성된 문제가 이미 있습니다.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => viewPost(existingPost)}
+                    className="flex-1 h-10 bg-zinc-900 text-white rounded-xl text-[14px] font-semibold hover:bg-zinc-700 transition-colors"
+                  >
+                    기존 문제 보기
+                  </button>
+                  <button
+                    onClick={() => { setExistingPost(null); runPrefetch(caseData); generate(); }}
+                    className="flex-1 h-10 bg-white border border-zinc-200 text-zinc-600 rounded-xl text-[14px] font-semibold hover:border-zinc-400 hover:text-zinc-900 transition-colors"
+                  >
+                    새로 생성하기
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* 기존 문제 없음 → 바로 생성 */
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => generate()}
+                  className="h-10 px-5 bg-zinc-900 text-white rounded-xl text-[14px] font-semibold hover:bg-zinc-700 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                  문제 생성하기
+                </button>
+              </div>
+            )}
           </div>
         )}
 
