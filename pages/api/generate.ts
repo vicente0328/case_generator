@@ -103,18 +103,11 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-pro-preview-03-25",
+      model: "gemini-2.0-flash-thinking-exp-01-21",
       systemInstruction: SYSTEM_PROMPT,
     });
 
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      generationConfig: {
-        // Enable thinking mode for higher-quality legal reasoning
-        // @ts-expect-error thinkingConfig is supported by the API
-        thinkingConfig: { thinkingBudget: 8000 },
-      },
-    });
+    const result = await model.generateContent(userPrompt);
     const text = result.response.text();
 
     return res.status(200).json({ result: text });
