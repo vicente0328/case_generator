@@ -27,6 +27,7 @@ interface PostPreview {
   likes: number;
   needsReview: number;
   userName: string;
+  lawArea?: LawArea;
 }
 
 interface Section {
@@ -55,6 +56,7 @@ function cleanAiText(text: string): string {
     .replace(/^(출력 형식 준수|출력 형식|형식 준수|참고|주의사항|주의)[^\n]*/gim, "")
     .replace(/^#+\s*(출력 형식|세부 작성 규칙|작성 규칙)[^\n]*/gim, "")
     .replace(/^\*\*?(출력 형식|세부 작성|참고|주의)[^*\n]*/gim, "")
+    .replace(/\*\*/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -500,6 +502,7 @@ export default function Home() {
       addDoc(collection(db, "posts"), {
         userId: user?.uid || null,
         userName,
+        lawArea: activeTab,
         caseNumber: caseData.caseNumber,
         caseName: caseData.caseName || "",
         court: caseData.court || "",
@@ -517,6 +520,7 @@ export default function Home() {
           id: ref.id,
           userId: user?.uid || null,
           userName,
+          lawArea: activeTab,
           caseNumber: caseData.caseNumber,
           caseName: caseData.caseName || "",
           court: caseData.court || "",
@@ -762,6 +766,7 @@ export default function Home() {
                 setInput("");
                 setVoted(null);
                 setExistingPost(null);
+                setDisplayCount(10);
               }}
               className={`flex-1 py-2 text-[13px] rounded-lg transition-colors ${
                 activeTab === tab
@@ -854,9 +859,12 @@ export default function Home() {
 
               {/* 목록 */}
               {(() => {
+                const byTab = feedPosts.filter(p =>
+                  p.lawArea === activeTab || (!p.lawArea && activeTab === "민사법")
+                );
                 const source = feedFilter === "mine"
-                  ? feedPosts.filter(p => p.userId === user?.uid)
-                  : feedPosts;
+                  ? byTab.filter(p => p.userId === user?.uid)
+                  : byTab;
                 const q = feedSearch.trim().toLowerCase();
                 const filtered = q
                   ? source.filter(p =>
