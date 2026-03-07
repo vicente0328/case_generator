@@ -498,6 +498,8 @@ export default function Home() {
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([false, false, false, false, false]);
   const [showAlmostDone, setShowAlmostDone] = useState(false);
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualText, setManualText] = useState("");
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
@@ -656,10 +658,38 @@ export default function Home() {
         }
       }).catch(() => runPrefetch(data));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "조회 중 오류가 발생했습니다.");
+      const msg = e instanceof Error ? e.message : "조회 중 오류가 발생했습니다.";
+      setError(msg);
+      setShowManualInput(true);
     } finally {
       setLoadingCase(false);
     }
+  };
+
+  const submitManualText = () => {
+    const text = manualText.trim();
+    if (!text) return;
+    // 붙여넣은 텍스트에서 기본 메타데이터 추출 시도
+    const caseNoMatch = text.match(/([0-9]{2,4}[가-힣]+[0-9]+)/);
+    const courtMatch = text.match(/(대법원|고등법원|지방법원|가정법원|행정법원)/);
+    const dateMatch = text.match(/([0-9]{4})\.\s*([0-9]{1,2})\.\s*([0-9]{1,2})/);
+    const caseNameMatch = text.match(/\[([^\]]{2,30})\]/);
+    const date = dateMatch
+      ? `${dateMatch[1]}${dateMatch[2].padStart(2, "0")}${dateMatch[3].padStart(2, "0")}`
+      : "";
+    setCaseData({
+      caseNumber: caseNoMatch?.[1] || input.trim(),
+      caseName: caseNameMatch?.[1] || "",
+      court: courtMatch?.[1] || "",
+      date,
+      rulingPoints: "",
+      rulingRatio: "",
+      fullText: text,
+    });
+    setShowManualInput(false);
+    setManualText("");
+    setError("");
+    setStep("preview");
   };
 
   const generate = async (fresh = false) => {
@@ -852,6 +882,7 @@ ${post.rulingRatio ? `<div class="summary"><div class="st">판결요지</div><di
     autoSaveRef.current = false;
     setStep("input"); setCaseData(null); setGenerated(""); setError("");
     setPostId(null); setInput(""); setVoted(null); setExistingPost(null);
+    setShowManualInput(false); setManualText("");
   };
 
   return (
@@ -900,6 +931,39 @@ ${post.rulingRatio ? `<div class="summary"><div class="st">판결요지</div><di
         {error && (
           <div className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-[13px] text-red-500">
             {error}
+          </div>
+        )}
+
+        {/* 판례 직접 입력 (조회 실패 시) */}
+        {showManualInput && step === "input" && (
+          <div className="mb-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+            <p className="text-[12px] font-semibold text-zinc-500 mb-1">판례 본문 직접 입력</p>
+            <p className="text-[11px] text-zinc-400 mb-3">
+              국가법령정보센터(law.go.kr) 또는 대법원 종합법률정보(glaw.scourt.go.kr)에서
+              판례 전문을 복사해 붙여넣으세요.
+            </p>
+            <textarea
+              value={manualText}
+              onChange={e => setManualText(e.target.value)}
+              placeholder={"【전문】\n원고, 피고 ...\n\n【주문】\n...\n\n【이유】\n..."}
+              rows={8}
+              className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-2.5 text-[12px] font-mono text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors resize-none"
+            />
+            <div className="mt-2.5 flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowManualInput(false); setManualText(""); setError(""); }}
+                className="h-8 px-3 rounded-lg text-[12px] text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={submitManualText}
+                disabled={!manualText.trim()}
+                className="h-8 px-4 bg-blue-900 text-white rounded-lg text-[12px] font-semibold hover:bg-blue-800 transition-colors disabled:opacity-40"
+              >
+                문제 생성
+              </button>
+            </div>
           </div>
         )}
 
