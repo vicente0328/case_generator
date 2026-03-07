@@ -10,9 +10,9 @@ interface Props {
 
 // ── 소스 뱃지 라벨 ─────────────────────────────────────────────────────────────
 const SOURCE_LABEL: Record<string, { label: string; color: string }> = {
-  법제처:   { label: "법제처",  color: "bg-emerald-100 text-emerald-600" },
-  glaw:    { label: "glaw",   color: "bg-sky-100 text-sky-600" },
-  AI추천:   { label: "AI추천", color: "bg-amber-100 text-amber-700" },
+  법제처:  { label: "법제처", color: "bg-emerald-100 text-emerald-600" },
+  법학지:  { label: "법학지", color: "bg-sky-100 text-sky-600" },
+  AI추천:  { label: "AI추천", color: "bg-amber-100 text-amber-700" },
 };
 
 // ── 법역별 스타일 ─────────────────────────────────────────────────────────────
@@ -251,7 +251,7 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
           {/* 설명 + 가져오기 버튼 */}
           <div className="px-4 py-3 flex items-start justify-between gap-3">
             <p className="text-[11px] text-zinc-400 leading-relaxed">
-              법제처 키워드 검색 · glaw 최신 판례 · Gemini 지식 기반 추천을 병렬 조회한 후,
+              법제처 공보판례 실시간 검색 · 법률신문·저스티스·법조 판례평석 크롤링 · Gemini 지식 기반 추천을 병렬 조회한 후,
               Gemini가 변시 적합성을 평가하여 민사법 / 공법 / 형사법으로 분류합니다.
               <span className="text-amber-600 font-medium">AI추천</span> 판례는 일괄 생성 시 case-lookup으로 실존 여부가 자동 검증됩니다.
             </p>
@@ -281,7 +281,7 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
               <div className="px-4 pb-3 flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3 flex-wrap">
                   <StatBadge label="법제처" count={result.stats.lawGoKr} color="bg-emerald-400" />
-                  <StatBadge label="glaw" count={result.stats.glaw} color="bg-sky-400" />
+                  <StatBadge label="법학지" count={result.stats.journal} color="bg-sky-400" />
                   <StatBadge label="AI추천" count={result.stats.aiSuggested} color="bg-amber-400" />
                   <span className="text-zinc-200 text-[11px]">→</span>
                   <span className="text-[11px] font-semibold text-zinc-700">

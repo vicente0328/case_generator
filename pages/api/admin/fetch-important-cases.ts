@@ -31,7 +31,7 @@ export interface FetchResult {
   형사법: FetchedCase[];
   stats: {
     lawGoKr: number;
-    glaw: number;
+    journal: number;
     aiSuggested: number;
     totalRaw: number;
     totalFiltered: number;
@@ -176,20 +176,40 @@ async function fetchFromLawGoKr(
   };
 }
 
-// ── Source 2: glaw 대법원 종합법률정보 최신 판례 ─────────────────────────────
-// case-lookup.ts에서 이미 사용 중인 glaw 접근 방식 활용
-async function fetchFromGlaw(): Promise<{ caseNumbers: string[]; error?: string }> {
+// ── Source 2: 법학지·법률신문 크롤링 ──────────────────────────────────────────
+// 판례평석이 자주 실리는 법학지·법률신문을 크롤링하여 사건번호 추출.
+// 평석 대상 판례 = 법리적으로 중요 → 변시 출제 가능성 높음.
+//
+// 시도 순서:
+//   ① 법률신문 (lawtimes.co.kr)  — 판례평석 코너, 주 1~2회 업데이트, 로스쿨 교수 필진
+//   ② 저스티스 (justice.or.kr)   — 한국법학원 발간, 민사·공법·형사 균형
+//   ③ 법조 (koreanbar.or.kr)     — 대한변협, 판례평석 코너
+//   ④ glaw 최신판례              — 위 소스 실패 시 보완용 fallback
+async function fetchFromLegalJournals(): Promise<{ caseNumbers: string[]; error?: string }> {
   const allNums = new Set<string>();
-  // 최근 2년 날짜 범위
-  const fromDate = `${CURRENT_YEAR - 2}0101`;
+  const minYear = CURRENT_YEAR - 3; // 최근 3년치 판례평석 커버
 
-  const attempts = [
-    // 민사 판례
-    `https://glaw.scourt.go.kr/wsjo/panre/sjo060.do?q=%EB%AF%BC%EB%B2%95&tabId=0&spId=&startDate=${fromDate}`,
-    // 형사 판례
-    `https://glaw.scourt.go.kr/wsjo/panre/sjo060.do?q=%ED%98%95%EB%B2%95&tabId=0&spId=&startDate=${fromDate}`,
-    // 행정 판례
-    `https://glaw.scourt.go.kr/wsjo/panre/sjo060.do?q=%ED%96%89%EC%A0%95%EB%B2%95&tabId=0&spId=&startDate=${fromDate}`,
+  const attempts: string[] = [
+    // ① 법률신문 — 판례평석 검색 결과
+    `https://www.lawtimes.co.kr/search/news?query=${encodeURIComponent("판례평석")}`,
+    `https://www.lawtimes.co.kr/search/news?query=${encodeURIComponent("판례평석")}&page=2`,
+    `https://www.lawtimes.co.kr/search/news?query=${encodeURIComponent("대법원 판결 평석")}`,
+    // 법률신문 — 판례 전문 섹션
+    `https://www.lawtimes.co.kr/Legal-Info/Cases-Keyword`,
+    `https://www.lawtimes.co.kr/Legal-Info/Judgment`,
+
+    // ② 저스티스 (한국법학원) — 논문 목록 (판례평석 포함)
+    `https://justice.or.kr/home/bbs/list.do?bbsId=BBSSTR_000000000031&pageIndex=1`,
+    `https://justice.or.kr/home/bbs/list.do?bbsId=BBSSTR_000000000031&pageIndex=2`,
+
+    // ③ 법조 (대한변협) — 판례평석 카테고리
+    `https://www.koreanbar.or.kr/pages/research/list.asp?cate=4`,
+    `https://www.koreanbar.or.kr/pages/research/list.asp?cate=5`,
+
+    // ④ glaw fallback — 위 소스에서 사건번호를 못 가져올 경우 보완
+    `https://glaw.scourt.go.kr/wsjo/panre/sjo060.do?q=%EB%AF%BC%EB%B2%95&tabId=0&spId=&startDate=${CURRENT_YEAR - 2}0101`,
+    `https://glaw.scourt.go.kr/wsjo/panre/sjo060.do?q=%ED%98%95%EB%B2%95&tabId=0&spId=&startDate=${CURRENT_YEAR - 2}0101`,
+    `https://glaw.scourt.go.kr/wsjo/panre/sjo060.do?q=%ED%96%89%EC%A0%95%EB%B2%95&tabId=0&spId=&startDate=${CURRENT_YEAR - 2}0101`,
   ];
 
   for (const url of attempts) {
@@ -200,15 +220,17 @@ async function fetchFromGlaw(): Promise<{ caseNumbers: string[]; error?: string 
       });
       if (!res.ok) continue;
       const html = await res.text();
-      extractCaseNumbers(html, CURRENT_YEAR - 2).forEach((n) => allNums.add(n));
+      extractCaseNumbers(html, minYear).forEach((n) => allNums.add(n));
     } catch {
-      // 무시
+      // 개별 소스 실패 무시
     }
   }
 
   return {
     caseNumbers: [...allNums],
-    error: allNums.size === 0 ? "glaw 접근 실패 (서버에서 차단 또는 URL 변경)" : undefined,
+    error: allNums.size === 0
+      ? "법학지·법률신문 크롤링 결과 없음 (JS 렌더링 또는 접근 차단)"
+      : undefined,
   };
 }
 
@@ -347,14 +369,14 @@ export default async function handler(
   const errors: string[] = [];
 
   // 3개 소스 병렬 조회
-  const [lawGoKrResult, glawResult, aiResult] = await Promise.all([
+  const [lawGoKrResult, journalResult, aiResult] = await Promise.all([
     fetchFromLawGoKr(oc),
-    fetchFromGlaw(),
+    fetchFromLegalJournals(),
     fetchFromGeminiKnowledge(geminiKey),
   ]);
 
   if (lawGoKrResult.error) errors.push(`법제처: ${lawGoKrResult.error}`);
-  if (glawResult.error) errors.push(`glaw: ${glawResult.error}`);
+  if (journalResult.error) errors.push(`법학지: ${journalResult.error}`);
   if (aiResult.error) errors.push(`AI추천: ${aiResult.error}`);
 
   // 사건번호 맵 — 중복 제거 + 소스 추적 + 메타데이터
@@ -384,7 +406,7 @@ export default async function handler(
   lawGoKrResult.cases.forEach((c) =>
     addCase(c.caseNumber, "법제처", { caseName: c.caseName, court: c.court, date: c.date })
   );
-  glawResult.caseNumbers.forEach((n) => addCase(n, "glaw"));
+  journalResult.caseNumbers.forEach((n) => addCase(n, "법학지"));
   aiResult.caseNumbers.forEach((n) => addCase(n, "AI추천"));
 
   const totalRaw = caseMap.size;
@@ -422,7 +444,7 @@ export default async function handler(
     형사법: toFetchedCases(classified["형사법"]),
     stats: {
       lawGoKr: lawGoKrResult.cases.length,
-      glaw: glawResult.caseNumbers.length,
+      journal: journalResult.caseNumbers.length,
       aiSuggested: aiResult.caseNumbers.length,
       totalRaw,
       totalFiltered:
