@@ -18,7 +18,7 @@ import {
 type Step = "input" | "preview" | "generating" | "done";
 
 function CaseInfoCard({ data }: { data: CaseData }) {
-  const [rulingExpanded, setRulingExpanded] = useState(false);
+  const [rulingExpanded, setRulingExpanded] = useState(true);
 
   return (
     <div className="bg-white rounded-[20px] border border-[#E5E5EA] overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
