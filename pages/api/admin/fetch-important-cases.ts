@@ -134,8 +134,8 @@ async function fetchFromLawGoKr(
   let authFailed = false;
 
   // ① 최신 판례 직접 수집 (sort=date, 최근 100개) — Gemini가 모르는 25~26년 판례 커버
-  // 빈 query 또는 "선고"로 넓게 검색
-  const recentQueries = ["선고", "대법원", "헌법재판소"];
+  // "선고"=판결, "결정"=결정(마·카·라), "헌법재판소"=헌재 결정 커버
+  const recentQueries = ["선고", "결정", "헌법재판소"];
   for (const q of recentQueries) {
     if (authFailed) break;
     try {
