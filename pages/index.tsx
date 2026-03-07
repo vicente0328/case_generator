@@ -38,6 +38,14 @@ interface Section {
 
 type LawArea = "민사법" | "공법" | "형사법";
 
+// 사건번호 패턴으로 법역 자동 분류
+// 도 → 형사법, 두/헌 → 공법, 그 외(다 등) → 민사법
+function classifyLawArea(caseNumber: string): LawArea {
+  if (/도\d/.test(caseNumber)) return "형사법";
+  if (/두\d/.test(caseNumber) || /헌/.test(caseNumber)) return "공법";
+  return "민사법";
+}
+
 const SUGGESTED: Record<LawArea, string[]> = {
   민사법: ["2016다271226", "2019다272855", "2021다264253"],
   공법: ["2019두49953", "2010두2005", "2017헌마479"],
@@ -499,10 +507,11 @@ export default function Home() {
       const userName = user
         ? (user.displayName || user.email?.split("@")[0] || "익명")
         : getAnonName();
+      const postLawArea = classifyLawArea(caseData.caseNumber);
       addDoc(collection(db, "posts"), {
         userId: user?.uid || null,
         userName,
-        lawArea: activeTab,
+        lawArea: postLawArea,
         caseNumber: caseData.caseNumber,
         caseName: caseData.caseName || "",
         court: caseData.court || "",
@@ -520,7 +529,7 @@ export default function Home() {
           id: ref.id,
           userId: user?.uid || null,
           userName,
-          lawArea: activeTab,
+          lawArea: postLawArea,
           caseNumber: caseData.caseNumber,
           caseName: caseData.caseName || "",
           court: caseData.court || "",
@@ -860,7 +869,7 @@ export default function Home() {
               {/* 목록 */}
               {(() => {
                 const byTab = feedPosts.filter(p =>
-                  p.lawArea === activeTab || (!p.lawArea && activeTab === "민사법")
+                  (p.lawArea ?? classifyLawArea(p.caseNumber)) === activeTab
                 );
                 const source = feedFilter === "mine"
                   ? byTab.filter(p => p.userId === user?.uid)
