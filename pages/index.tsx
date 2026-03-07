@@ -383,7 +383,21 @@ export default function Home() {
         content: generated,
         likes: 0, needsReview: 0,
         createdAt: serverTimestamp(),
-      }).then(ref => setPostId(ref.id)).catch(console.error);
+      }).then(ref => {
+        setPostId(ref.id);
+        // 피드 실시간 반영 — 새 포스트를 맨 앞에 추가
+        setFeedPosts(prev => [{
+          id: ref.id,
+          userId: user?.uid || null,
+          userName: user?.displayName || user?.email?.split("@")[0] || "익명",
+          caseNumber: caseData.caseNumber,
+          caseName: caseData.caseName || "",
+          court: caseData.court || "",
+          date: caseData.date || "",
+          likes: 0,
+          needsReview: 0,
+        }, ...prev]);
+      }).catch(console.error);
     }
     if (step !== "done") autoSaveRef.current = false;
   }, [step, generated, postId, caseData, user]);
