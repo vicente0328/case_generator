@@ -791,7 +791,7 @@ export default function Home() {
   const exportToPdf = async () => {
     if (selectedPostIds.size === 0) return;
     const ids = [...selectedPostIds];
-    type PostData = { id: string; lawArea?: string; caseNumber: string; court?: string; date?: string; caseName?: string; content?: string; rulingPoints?: string };
+    type PostData = { id: string; lawArea?: string; caseNumber: string; court?: string; date?: string; caseName?: string; content?: string; rulingPoints?: string; rulingRatio?: string };
     const posts = await Promise.all(
       ids.map(id => getDoc(doc(db, "posts", id)).then(snap => ({ id: snap.id, ...snap.data() } as PostData)))
     );
@@ -834,6 +834,7 @@ ${posts.map(post => {
 <div class="ph"><span class="badge ${badgeClass}">${lawArea}</span><div class="cn">${post.caseNumber}</div>${dateParts ? `<div class="meta">${dateParts}</div>` : ""}</div>
 ${renderSectionsHtml(post.content as string || "")}
 ${post.rulingPoints ? `<div class="summary"><div class="st">판시사항</div><div class="sb2">${post.rulingPoints}</div></div>` : ""}
+${post.rulingRatio ? `<div class="summary"><div class="st">판결요지</div><div class="sb2">${post.rulingRatio}</div></div>` : ""}
 </div>`;
 }).join("")}
 </body></html>`;
