@@ -312,6 +312,10 @@ function Comments({ postId }: { postId: string }) {
 }
 
 /* ── 판례 원문 ── */
+function stripHtml(text: string): string {
+  return text.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
 function parseLegalSections(text: string): { heading: string; body: string }[] {
   const sections: { heading: string; body: string }[] = [];
   const markerRe = /【([^】]+)】/g;
@@ -331,7 +335,8 @@ function parseLegalSections(text: string): { heading: string; body: string }[] {
 
 function FullTextSection({ fullText }: { fullText: string }) {
   const [open, setOpen] = useState(false);
-  const sections = parseLegalSections(fullText);
+  const clean = stripHtml(fullText);
+  const sections = parseLegalSections(clean);
   const hasSections = sections.some(s => s.heading);
 
   return (
@@ -367,7 +372,7 @@ function FullTextSection({ fullText }: { fullText: string }) {
             </div>
           ) : (
             <div className="px-6 py-6">
-              <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{fullText}</p>
+              <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{clean}</p>
             </div>
           )}
         </div>
@@ -484,11 +489,9 @@ export default function Home() {
 
     (async () => {
       try {
-        const token = user ? await user.getIdToken() : "";
-        if (!token) { state.error = "로그인이 필요합니다."; state.notify?.(); return; }
         const res = await fetch("/api/generate", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ caseData: data }),
           signal: controller.signal,
         });
@@ -595,11 +598,9 @@ export default function Home() {
 
     prefetchRef.current = null;
     try {
-      const token = user ? await user.getIdToken() : "";
-      if (!token) throw new Error("로그인이 필요합니다.");
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ caseData }),
       });
       if (!res.body) throw new Error("스트림을 받을 수 없습니다.");
