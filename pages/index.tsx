@@ -312,8 +312,28 @@ function Comments({ postId }: { postId: string }) {
 }
 
 /* ── 판례 원문 ── */
+function parseLegalSections(text: string): { heading: string; body: string }[] {
+  const sections: { heading: string; body: string }[] = [];
+  const markerRe = /【([^】]+)】/g;
+  let lastIndex = 0;
+  let lastHeading = "";
+  let m: RegExpExecArray | null;
+  while ((m = markerRe.exec(text)) !== null) {
+    const body = text.slice(lastIndex, m.index).trim();
+    if (lastIndex > 0 || body) sections.push({ heading: lastHeading, body });
+    lastHeading = m[1];
+    lastIndex = m.index + m[0].length;
+  }
+  const remaining = text.slice(lastIndex).trim();
+  if (remaining || lastHeading) sections.push({ heading: lastHeading, body: remaining });
+  return sections.filter(s => s.heading || s.body);
+}
+
 function FullTextSection({ fullText }: { fullText: string }) {
   const [open, setOpen] = useState(false);
+  const sections = parseLegalSections(fullText);
+  const hasSections = sections.some(s => s.heading);
+
   return (
     <div className="mt-4 rounded-xl border border-zinc-100 overflow-hidden">
       <button
@@ -329,8 +349,27 @@ function FullTextSection({ fullText }: { fullText: string }) {
         </svg>
       </button>
       {open && (
-        <div className="px-6 py-6 bg-white border-t border-zinc-100">
-          <p className="text-[13px] text-zinc-600 leading-[1.9] whitespace-pre-wrap font-mono">{fullText}</p>
+        <div className="bg-white border-t border-zinc-100 max-h-[600px] overflow-y-auto">
+          {hasSections ? (
+            <div className="divide-y divide-zinc-50">
+              {sections.map((s, i) => (
+                <div key={i} className="px-6 py-5">
+                  {s.heading && (
+                    <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2.5">
+                      {s.heading}
+                    </p>
+                  )}
+                  {s.body && (
+                    <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{s.body}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-6 py-6">
+              <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{fullText}</p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -374,7 +413,9 @@ export default function Home() {
   }, [router.isReady, router.query.case]);
 
   const PROGRESS_STEPS = ["판례 원문 분석", "핵심 법리 추출", "사실관계 구성", "문항 및 배점 설정", "해설 및 모범답안 작성"];
-  const STEP_DELAYS = [1500, 4000, 8000, 13000];
+  // 각 단계를 약 5초 간격으로 균등 분배 (총 ~25s 가정)
+  // 0→4s, 1→9s, 2→14s, 3→20s, 4(마지막)→완료 시
+  const STEP_DELAYS = [4000, 9000, 14000, 20000];
 
   useEffect(() => {
     if (step !== "generating") {
@@ -385,8 +426,8 @@ export default function Home() {
     const timers = STEP_DELAYS.map((delay, i) =>
       setTimeout(() => setCheckedSteps(prev => prev.map((v, j) => j <= i ? true : v)), delay)
     );
-    // 마지막 단계 체크(13s) 후 4초 더 지나도 완료 안 되면 안내 메시지 표시
-    const almostDoneTimer = setTimeout(() => setShowAlmostDone(true), 17000);
+    // 마지막 단계 체크(20s) 후 4초 지나도 완료 안 되면 안내 메시지 표시
+    const almostDoneTimer = setTimeout(() => setShowAlmostDone(true), 24000);
     return () => { timers.forEach(clearTimeout); clearTimeout(almostDoneTimer); };
   }, [step]);
 
