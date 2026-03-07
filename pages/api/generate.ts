@@ -184,6 +184,20 @@ function getSystemPrompt(lawArea: LawArea): string {
   return SYSTEM_PROMPT_CIVIL;
 }
 
+// 선고일자 포맷: "20250515" → "2025. 5. 15." (앞자리 0 제거)
+function formatJudgmentDate(dateStr: string): string {
+  const d = String(dateStr ?? "").replace(/\D/g, "");
+  if (d.length < 8) return "";
+  return `${d.slice(0, 4)}. ${parseInt(d.slice(4, 6), 10)}. ${parseInt(d.slice(6, 8), 10)}.`;
+}
+
+// 사건 종류 → 판결/결정 결정
+function getRulingType(caseNumber: string, court: string): string {
+  if (court.includes("헌법재판소") || /헌/.test(caseNumber)) return "결정";
+  if (/[마카라]\d/.test(caseNumber)) return "결정";
+  return "판결";
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -231,12 +245,15 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
       systemInstruction: getSystemPrompt(lawArea),
     });
 
-    // 사건번호·선고일자 헤더를 첫 청크로 주입 (Gemini 출력 앞에 항상 표시)
-    const dateStr = caseData.date
-      ? String(caseData.date).replace(/(\d{4})(\d{2})(\d{2})/, "$1. $2. $3.")
-      : "";
-    const header = `**${caseData.caseNumber}${dateStr ? ` | ${dateStr}` : ""}**\n\n`;
-    send({ text: header });
+    // 판례 인용 헤더를 첫 청크로 주입 (parseContent가 [판례 제목] 마커로 파싱)
+    // 형식: 대법원 2025. 5. 15. 선고 2024다317332 판결
+    const dateStr = formatJudgmentDate(caseData.date ?? "");
+    const courtName = caseData.court || "대법원";
+    const rulingType = getRulingType(caseData.caseNumber, courtName);
+    const citation = dateStr
+      ? `${courtName} ${dateStr} 선고 ${caseData.caseNumber} ${rulingType}`
+      : `${courtName} ${caseData.caseNumber} ${rulingType}`;
+    send({ text: `[판례 제목]\n${citation}\n\n` });
 
     const { stream } = await model.generateContentStream(userPrompt);
     for await (const chunk of stream) {

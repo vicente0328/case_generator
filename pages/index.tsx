@@ -44,7 +44,7 @@ interface PostPreview {
 }
 
 interface Section {
-  type: "facts" | "question" | "answer" | "precedent" | "other";
+  type: "header" | "facts" | "question" | "answer" | "precedent" | "other";
   heading: string;
   body: string;
 }
@@ -97,7 +97,9 @@ function parseContent(text: string): Section[] {
 
   for (const line of lines) {
     const t = line.trim();
-    if (/^<사실관계>$|^\[사실관계\]$/.test(t)) {
+    if (/^\[판례\s*제목\]$/.test(t)) {
+      flush(); cur = { type: "header", heading: "판례 제목", body: "" };
+    } else if (/^<사실관계>$|^\[사실관계\]$/.test(t)) {
       flush(); cur = { type: "facts", heading: "사실관계", body: "" };
     } else if (/^<문\s*\d*>|^<문제>/.test(t)) {
       flush(); cur = { type: "question", heading: t.replace(/^<|>$/g, "").trim(), body: "" };
@@ -121,6 +123,7 @@ function parseContent(text: string): Section[] {
 function renderSectionsHtml(content: string): string {
   const sections = parseContent(content);
   return sections.map(s => {
+    if (s.type === "header") return `<div class="section header-section"><strong class="prec-citation">${s.body}</strong></div>`;
     if (s.type === "facts") {
       const bullets = s.body.split("\n").flatMap(line => {
         const t = line.trim();
@@ -187,6 +190,12 @@ function GeneratedContent({ content }: { content: string }) {
   return (
     <div className="space-y-4">
       {sections.map((s, i) => {
+        if (s.type === "header") return (
+          <div key={i} className="bg-zinc-900 rounded-xl px-6 py-4 flex items-center gap-3">
+            <div className="w-[3px] h-5 rounded-full bg-blue-400 flex-shrink-0" />
+            <p className="text-[14px] font-bold text-white leading-snug tracking-tight">{s.body}</p>
+          </div>
+        );
         if (s.type === "facts") {
           const bullets = s.body
             .split("\n")
