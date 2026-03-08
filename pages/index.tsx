@@ -525,7 +525,7 @@ function getAnonName(): string {
 
 /* ── 메인 페이지 ── */
 export default function Home() {
-  const { user } = useAuth();
+  const { user, signInWithGoogle } = useAuth();
   const router = useRouter();
   const isAdmin = user?.email === ADMIN_EMAIL;
 
@@ -704,8 +704,8 @@ export default function Home() {
       if (!res.ok) throw new Error(data.error || "판례 조회 실패");
       setCaseData(data); setStep("preview");
 
-      // 프리페치를 즉시 시작 — Firestore 조회 완료를 기다리지 않음
-      runPrefetch(data);
+      // 프리페치를 즉시 시작 — 로그인한 경우에만 (Firestore 조회 완료를 기다리지 않음)
+      if (user) runPrefetch(data);
 
       // 기존 문제 조회 (병렬) — orderBy 없이 where만 사용해 복합 인덱스 불필요
       getDocs(query(
@@ -758,6 +758,7 @@ export default function Home() {
 
   const generate = async (fresh = false) => {
     if (!caseData) return;
+    if (!user) { setError("로그인이 필요합니다."); return; }
 
     if (fresh) {
       prefetchAbortRef.current?.abort();
@@ -1342,8 +1343,8 @@ ${renderSectionsHtml(post.content as string || "")}
                   </button>
                 </div>
               </div>
-            ) : (
-              /* 기존 문제 없음 → 바로 생성 */
+            ) : user ? (
+              /* 기존 문제 없음 + 로그인 → 바로 생성 */
               <div className="mt-4 flex justify-end">
                 <button
                   onClick={() => generate()}
@@ -1353,6 +1354,17 @@ ${renderSectionsHtml(post.content as string || "")}
                     <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                   </svg>
                   문제 생성하기
+                </button>
+              </div>
+            ) : (
+              /* 기존 문제 없음 + 비로그인 → 로그인 안내 */
+              <div className="mt-4 flex justify-end items-center gap-3">
+                <span className="text-[13px] text-zinc-500">문제를 생성하려면 로그인이 필요합니다.</span>
+                <button
+                  onClick={signInWithGoogle}
+                  className="h-10 px-5 bg-zinc-800 text-white rounded-xl text-[14px] font-semibold hover:bg-zinc-700 transition-colors"
+                >
+                  로그인
                 </button>
               </div>
             )}
