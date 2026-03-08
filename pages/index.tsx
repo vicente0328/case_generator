@@ -1410,38 +1410,43 @@ ${renderSectionsHtml(post.content as string || "")}
         {/* ── 완료 ── */}
         {step === "done" && generated && (
           <div>
+            {/* 상단 sticky 네비 바 */}
+            <div className="sticky top-0 z-20 -mx-6 px-6 py-2.5 bg-[#F6F6F7]/90 backdrop-blur-sm border-b border-zinc-200/60 flex items-center justify-between mb-4">
+              <button
+                onClick={reset}
+                className="flex items-center gap-1.5 text-[13px] text-zinc-500 hover:text-zinc-900 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                {postId ? "목록으로" : "새 문제"}
+              </button>
+              <button
+                onClick={() => generate(true)}
+                className="flex items-center gap-1.5 text-[13px] text-zinc-400 hover:text-zinc-700 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                다시 생성
+              </button>
+            </div>
+
             <GeneratedContent content={generated} />
 
             {caseData?.fullText && <FullTextSection fullText={caseData.fullText} court={caseData.court} />}
 
             {/* 액션 바 */}
-            <div className="mt-8 pt-6 border-t border-zinc-100 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={reset}
-                  className="text-[13px] text-zinc-400 hover:text-zinc-700 transition-colors"
-                >
-                  {postId ? "← 목록으로" : "← 새 문제"}
-                </button>
+            <div className="mt-8 pt-6 border-t border-zinc-100 flex items-center justify-end">
+              <div className="flex items-center gap-3">
                 {isAdmin && postId && (
                   <button
                     onClick={() => adminDeletePost(postId)}
-                    className="text-[13px] text-red-400 hover:text-red-600 transition-colors"
+                    className="text-[13px] text-red-400 hover:text-red-600 transition-colors mr-2"
                   >
                     게시물 삭제
                   </button>
                 )}
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => generate(true)}
-                  className="h-8 px-3.5 text-[13px] text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors flex items-center gap-1.5"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  다시 생성
-                </button>
                 <div className="w-px h-4 bg-zinc-200" />
                 <button
                   onClick={() => vote("likes")}
