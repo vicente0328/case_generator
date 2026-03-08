@@ -571,9 +571,9 @@ export default function Home() {
   // 0→4s, 1→9s, 2→14s, 3→20s, 4(마지막)→완료 시
   const STEP_DELAYS = [4000, 9000, 14000, 20000];
 
-  // done 진입 시 스크롤 초기화 — 이전 화면의 파란 버튼 잔상 방지
+  // done 진입 시 스크롤 초기화 — smooth scroll 애니메이션을 건너뛰고 즉시 맨 위로
   useEffect(() => {
-    if (step === "done") window.scrollTo(0, 0);
+    if (step === "done") window.scrollTo({ top: 0, behavior: "instant" });
   }, [step]);
 
   useEffect(() => {
@@ -1421,6 +1421,9 @@ ${renderSectionsHtml(post.content as string || "")}
               const t = e.touches[0];
               swipeTouchRef.current = { x: t.clientX, y: t.clientY };
             }}
+            onTouchCancel={() => {
+              swipeTouchRef.current = null;
+            }}
             onTouchEnd={e => {
               const start = swipeTouchRef.current;
               if (!start) return;
@@ -1428,8 +1431,8 @@ ${renderSectionsHtml(post.content as string || "")}
               const t = e.changedTouches[0];
               const dx = t.clientX - start.x;
               const dy = Math.abs(t.clientY - start.y);
-              // 오른쪽으로 80px 이상 & 세로 이동이 가로보다 작을 때만 뒤로가기
-              if (dx > 80 && dy < dx * 0.6) reset();
+              // 오른쪽으로 60px 이상 & 세로 이동이 가로보다 작을 때만 뒤로가기
+              if (dx > 60 && dy < dx * 0.6) reset();
             }}
           >
             {/* 상단 sticky 네비 바 */}
