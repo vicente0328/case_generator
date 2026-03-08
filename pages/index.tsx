@@ -434,14 +434,15 @@ function formatOutlineBody(text: string): string {
 
 function parseLegalSections(text: string): { heading: string; body: string }[] {
   const sections: { heading: string; body: string }[] = [];
-  const markerRe = /【([^】]+)】/g;
+  // 【주문】형식(대법원) 및 [주문] 형식(헌재) 모두 지원
+  const markerRe = /【([^】]+)】|\[([^\]]{2,10})\](?=\s*\n)/g;
   let lastIndex = 0;
   let lastHeading = "";
   let m: RegExpExecArray | null;
   while ((m = markerRe.exec(text)) !== null) {
     const body = text.slice(lastIndex, m.index).trim();
     if (lastIndex > 0 || body) sections.push({ heading: lastHeading, body });
-    lastHeading = m[1];
+    lastHeading = m[1] ?? m[2];
     lastIndex = m.index + m[0].length;
   }
   const remaining = text.slice(lastIndex).trim();
@@ -449,11 +450,13 @@ function parseLegalSections(text: string): { heading: string; body: string }[] {
   return sections.filter(s => s.heading || s.body);
 }
 
-function FullTextSection({ fullText }: { fullText: string }) {
+function FullTextSection({ fullText, court }: { fullText: string; court?: string }) {
   const [open, setOpen] = useState(false);
   const clean = stripHtml(fullText);
   const sections = parseLegalSections(clean);
   const hasSections = sections.some(s => s.heading);
+  const isConstitutional = court === "헌법재판소";
+  const label = isConstitutional ? "결정 원문 보기" : "판례 원문 보기";
 
   return (
     <div className="mt-4 rounded-xl border border-zinc-100 overflow-hidden">
@@ -461,7 +464,7 @@ function FullTextSection({ fullText }: { fullText: string }) {
         onClick={() => setOpen(v => !v)}
         className="w-full px-6 py-4 flex items-center justify-between bg-zinc-50 hover:bg-zinc-100 transition-colors"
       >
-        <span className="text-[13px] font-semibold text-zinc-500">판례 원문 보기</span>
+        <span className="text-[13px] font-semibold text-zinc-500">{label}</span>
         <svg
           className={`w-4 h-4 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}
           fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}
@@ -1397,7 +1400,7 @@ ${renderSectionsHtml(post.content as string || "")}
           <div>
             <GeneratedContent content={generated} />
 
-            {caseData?.fullText && <FullTextSection fullText={caseData.fullText} />}
+            {caseData?.fullText && <FullTextSection fullText={caseData.fullText} court={caseData.court} />}
 
             {/* 액션 바 */}
             <div className="mt-8 pt-6 border-t border-zinc-100 flex items-center justify-between">
