@@ -693,6 +693,9 @@ export default function Home() {
       if (!res.ok) throw new Error(data.error || "판례 조회 실패");
       setCaseData(data); setStep("preview");
 
+      // 프리페치를 즉시 시작 — Firestore 조회 완료를 기다리지 않음
+      runPrefetch(data);
+
       // 기존 문제 조회 (병렬) — orderBy 없이 where만 사용해 복합 인덱스 불필요
       getDocs(query(
         collection(db, "posts"),
@@ -702,12 +705,11 @@ export default function Home() {
         if (!snap.empty) {
           const d = snap.docs[0];
           setExistingPost({ id: d.id, ...d.data() } as PostPreview);
-          prefetchAbortRef.current?.abort(); // 기존 문제 있으면 프리페치 불필요
+          prefetchAbortRef.current?.abort(); // 기존 문제 있으면 프리페치 중단
           prefetchRef.current = null;
-        } else {
-          runPrefetch(data); // 기존 문제 없으면 바로 프리페치 시작
         }
-      }).catch(() => runPrefetch(data));
+        // 기존 문제 없으면 이미 시작된 프리페치를 그대로 유지
+      }).catch(() => {/* 이미 프리페치 중 — 무시 */});
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "조회 중 오류가 발생했습니다.";
       setError(msg);
