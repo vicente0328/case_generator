@@ -433,19 +433,22 @@ function formatOutlineBody(text: string): string {
 }
 
 function parseLegalSections(text: string): { heading: string; body: string }[] {
+  // 헌재 결정문: [주 문] 등 마커 바로 뒤에 내용이 붙는 경우 줄바꿈 삽입
+  const preprocessed = text.replace(/\[([가-힣][가-힣\s]{0,13})\]/g, (m) => "\n" + m);
+
   const sections: { heading: string; body: string }[] = [];
-  // 【주문】형식(대법원) 및 [주문] 형식(헌재) 모두 지원
-  const markerRe = /【([^】]+)】|\[([^\]]{2,10})\](?=\s*\n)/g;
+  // 【주문】형식(대법원) 및 [주 문] 형식(헌재, 한글+공백만) 모두 지원
+  const markerRe = /【([^】]+)】|\[([가-힣][가-힣\s]{0,13})\]/g;
   let lastIndex = 0;
   let lastHeading = "";
   let m: RegExpExecArray | null;
-  while ((m = markerRe.exec(text)) !== null) {
-    const body = text.slice(lastIndex, m.index).trim();
+  while ((m = markerRe.exec(preprocessed)) !== null) {
+    const body = preprocessed.slice(lastIndex, m.index).trim();
     if (lastIndex > 0 || body) sections.push({ heading: lastHeading, body });
-    lastHeading = m[1] ?? m[2];
+    lastHeading = (m[1] ?? m[2]).trim();
     lastIndex = m.index + m[0].length;
   }
-  const remaining = text.slice(lastIndex).trim();
+  const remaining = preprocessed.slice(lastIndex).trim();
   if (remaining || lastHeading) sections.push({ heading: lastHeading, body: remaining });
   return sections.filter(s => s.heading || s.body);
 }
@@ -457,6 +460,8 @@ function FullTextSection({ fullText, court }: { fullText: string; court?: string
   const hasSections = sections.some(s => s.heading);
   const isConstitutional = court === "헌법재판소";
   const label = isConstitutional ? "결정 원문 보기" : "판례 원문 보기";
+  // 마침표 없이 끝나면 API에서 잘린 것으로 판단
+  const isTruncated = clean.length > 100 && !/[.。」]$/.test(clean.trimEnd());
 
   return (
     <div className="mt-4 rounded-xl border border-zinc-100 overflow-hidden">
@@ -492,6 +497,11 @@ function FullTextSection({ fullText, court }: { fullText: string; court?: string
           ) : (
             <div className="px-6 py-6">
               <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{formatOutlineBody(clean)}</p>
+            </div>
+          )}
+          {isTruncated && (
+            <div className="px-6 py-3 border-t border-zinc-100 bg-zinc-50">
+              <p className="text-[12px] text-zinc-400">※ 법제처 API 제공 분량 제한으로 원문 일부가 표시되지 않을 수 있습니다.</p>
             </div>
           )}
         </div>
