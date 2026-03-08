@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 import type { CaseData } from "./case-lookup";
 
 type LawArea = "민사법" | "공법" | "형사법";
@@ -238,28 +239,64 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
 
   const send = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
+  // 판례 인용 헤더 (공통)
+  const dateStr = formatJudgmentDate(caseData.date ?? "");
+  const courtName = caseData.court || "대법원";
+  const rulingType = getRulingType(caseData.caseNumber, courtName);
+  const citation = dateStr
+    ? `${courtName} ${dateStr} 선고 ${caseData.caseNumber} ${rulingType}`
+    : `${courtName} ${caseData.caseNumber} ${rulingType}`;
+
+  function is503(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return msg.includes("503") || msg.includes("Service Unavailable") || msg.includes("high demand");
+  }
+
+  async function tryGemini(): Promise<void> {
+    const genAI = new GoogleGenerativeAI(apiKey!);
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-pro",
       systemInstruction: getSystemPrompt(lawArea),
     });
-
-    // 판례 인용 헤더를 첫 청크로 주입 (parseContent가 [판례 제목] 마커로 파싱)
-    // 형식: 대법원 2025. 5. 15. 선고 2024다317332 판결
-    const dateStr = formatJudgmentDate(caseData.date ?? "");
-    const courtName = caseData.court || "대법원";
-    const rulingType = getRulingType(caseData.caseNumber, courtName);
-    const citation = dateStr
-      ? `${courtName} ${dateStr} 선고 ${caseData.caseNumber} ${rulingType}`
-      : `${courtName} ${caseData.caseNumber} ${rulingType}`;
-    send({ text: `[판례 제목]\n${citation}\n\n` });
-
     const { stream } = await model.generateContentStream(userPrompt);
     for await (const chunk of stream) {
       const text = chunk.text();
       if (text) send({ text });
     }
+  }
+
+  async function tryClaude(): Promise<void> {
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY가 설정되지 않았습니다.");
+    const client = new Anthropic({ apiKey: anthropicKey });
+    const stream = client.messages.stream({
+      model: "claude-opus-4-6",
+      max_tokens: 8000,
+      system: getSystemPrompt(lawArea),
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    for await (const event of stream) {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
+      ) {
+        send({ text: event.delta.text });
+      }
+    }
+  }
+
+  try {
+    // 판례 인용 헤더를 첫 청크로 주입 (parseContent가 [판례 제목] 마커로 파싱)
+    send({ text: `[판례 제목]\n${citation}\n\n` });
+
+    try {
+      await tryGemini();
+    } catch (err1) {
+      if (!is503(err1)) throw err1;
+      console.warn("gemini-2.5-pro 503 → claude-opus-4-6 폴백");
+      await tryClaude();
+    }
+
     send({ done: true });
   } catch (err: unknown) {
     console.error("generate error:", err);
