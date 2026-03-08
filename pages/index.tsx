@@ -1081,6 +1081,16 @@ ${renderSectionsHtml(post.content as string || "")}
               </button>
             </div>
 
+            {!user && (
+              <p className="mt-3 text-[12px] text-zinc-400">
+                판례 조회는 누구나 가능합니다. 문제를 생성하려면{" "}
+                <button onClick={signInWithGoogle} className="text-blue-600 hover:underline font-medium">
+                  로그인
+                </button>
+                이 필요합니다.
+              </p>
+            )}
+
             <div className="mt-4 flex items-center gap-4">
               <span className="text-[11px] font-semibold text-zinc-300 uppercase tracking-widest">추천</span>
               <div className="flex gap-3 flex-wrap">
