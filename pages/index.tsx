@@ -554,6 +554,7 @@ export default function Home() {
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
+  const swipeTouchRef = useRef<{ x: number; y: number } | null>(null);
   const prefetchRef = useRef<{
     text: string;
     done: boolean;
@@ -1409,7 +1410,22 @@ ${renderSectionsHtml(post.content as string || "")}
 
         {/* ── 완료 ── */}
         {step === "done" && generated && (
-          <div>
+          <div
+            onTouchStart={e => {
+              const t = e.touches[0];
+              swipeTouchRef.current = { x: t.clientX, y: t.clientY };
+            }}
+            onTouchEnd={e => {
+              const start = swipeTouchRef.current;
+              if (!start) return;
+              swipeTouchRef.current = null;
+              const t = e.changedTouches[0];
+              const dx = t.clientX - start.x;
+              const dy = Math.abs(t.clientY - start.y);
+              // 오른쪽으로 80px 이상 & 세로 이동이 가로보다 작을 때만 뒤로가기
+              if (dx > 80 && dy < dx * 0.6) reset();
+            }}
+          >
             {/* 상단 sticky 네비 바 */}
             <div className="sticky top-0 z-20 -mx-6 px-6 py-2.5 bg-[#F6F6F7]/90 backdrop-blur-sm border-b border-zinc-200/60 flex items-center justify-between mb-4">
               <button
