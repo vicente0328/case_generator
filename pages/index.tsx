@@ -571,6 +571,11 @@ export default function Home() {
   // 0→4s, 1→9s, 2→14s, 3→20s, 4(마지막)→완료 시
   const STEP_DELAYS = [4000, 9000, 14000, 20000];
 
+  // done 진입 시 스크롤 초기화 — 이전 화면의 파란 버튼 잔상 방지
+  useEffect(() => {
+    if (step === "done") window.scrollTo(0, 0);
+  }, [step]);
+
   useEffect(() => {
     if (step !== "generating") {
       setCheckedSteps([false, false, false, false, false]);
@@ -1411,6 +1416,7 @@ ${renderSectionsHtml(post.content as string || "")}
         {/* ── 완료 ── */}
         {step === "done" && generated && (
           <div
+            style={{ touchAction: "pan-y" }}
             onTouchStart={e => {
               const t = e.touches[0];
               swipeTouchRef.current = { x: t.clientX, y: t.clientY };
