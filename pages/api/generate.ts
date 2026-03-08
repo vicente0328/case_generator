@@ -247,6 +247,8 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
     ? `${courtName} ${dateStr} 선고 ${caseData.caseNumber} ${rulingType}`
     : `${courtName} ${caseData.caseNumber} ${rulingType}`;
 
+  let modelUsed = "gemini-2.5-pro";
+
   function is503(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err);
     return msg.includes("503") || msg.includes("Service Unavailable") || msg.includes("high demand");
@@ -263,6 +265,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
       const text = chunk.text();
       if (text) send({ text });
     }
+    modelUsed = "gemini-2.5-pro";
   }
 
   async function tryClaude(): Promise<void> {
@@ -283,6 +286,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
         send({ text: event.delta.text });
       }
     }
+    modelUsed = "claude-opus-4-6";
   }
 
   try {
@@ -297,7 +301,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
       await tryClaude();
     }
 
-    send({ done: true });
+    send({ done: true, model: modelUsed });
   } catch (err: unknown) {
     console.error("generate error:", err);
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";

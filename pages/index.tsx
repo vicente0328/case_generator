@@ -41,6 +41,7 @@ interface PostPreview {
   needsReview: number;
   userName: string;
   lawArea?: LawArea;
+  model?: string;
 }
 
 interface Section {
@@ -551,6 +552,7 @@ export default function Home() {
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualText, setManualText] = useState("");
   const [batchAppendPayload, setBatchAppendPayload] = useState<AppendPayload>({ cases: [], version: 0 });
+  const [modelUsed, setModelUsed] = useState<string | null>(null);
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
@@ -559,6 +561,7 @@ export default function Home() {
     text: string;
     done: boolean;
     error: string | null;
+    model: string | null;
     notify: (() => void) | null;
   } | null>(null);
 
@@ -618,6 +621,7 @@ export default function Home() {
         fullText: caseData.fullText?.slice(0, 8000) || "",
         content: generated,
         likes: 0, needsReview: 0,
+        model: modelUsed || null,
         createdAt: serverTimestamp(),
       }).then(ref => {
         setPostId(ref.id);
@@ -633,6 +637,7 @@ export default function Home() {
           date: caseData.date || "",
           likes: 0,
           needsReview: 0,
+          model: modelUsed || undefined,
         }, ...prev]);
       }).catch(console.error);
     }
@@ -644,7 +649,7 @@ export default function Home() {
     const controller = new AbortController();
     prefetchAbortRef.current = controller;
 
-    const state = { text: "", done: false, error: null as string | null, notify: null as (() => void) | null };
+    const state = { text: "", done: false, error: null as string | null, model: null as string | null, notify: null as (() => void) | null };
     prefetchRef.current = state;
 
     (async () => {
@@ -672,7 +677,7 @@ export default function Home() {
             try {
               const payload = JSON.parse(line.slice(6));
               if (payload.error) { state.error = payload.error; state.notify?.(); return; }
-              if (payload.done) { state.done = true; state.notify?.(); return; }
+              if (payload.done) { state.done = true; state.model = payload.model || null; state.notify?.(); return; }
               if (payload.text) { state.text += payload.text; state.notify?.(); }
             } catch {}
           }
@@ -776,6 +781,7 @@ export default function Home() {
         }
         if (prefetch.done) {
           setGenerated(prefetch.text);
+          setModelUsed(prefetch.model);
           setStep("done");
           setLoadingGen(false);
         }
@@ -799,6 +805,7 @@ export default function Home() {
       const decoder = new TextDecoder();
       let buffer = "";
       let fullText = "";
+      let usedModel: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -813,7 +820,7 @@ export default function Home() {
           try {
             const payload = JSON.parse(line.slice(6));
             if (payload.error) throw new Error(payload.error);
-            if (payload.done) { setGenerated(fullText); setStep("done"); return; }
+            if (payload.done) { usedModel = payload.model || null; setModelUsed(usedModel); setGenerated(fullText); setStep("done"); return; }
             if (payload.text) fullText += payload.text;
           } catch (e) {
             if (e instanceof Error && e.message !== "Unexpected end of JSON input") throw e;
@@ -873,6 +880,7 @@ export default function Home() {
         fullText: data.fullText || "",
       } as CaseData);
       setGenerated(data.content);
+      setModelUsed(data.model || null);
       setPostId(post.id);
       setVoted(null);
       setStep("done"); // 네비게이션 먼저 — votes 읽기 실패와 무관하게 이동
@@ -962,7 +970,7 @@ ${renderSectionsHtml(post.content as string || "")}
     autoSaveRef.current = false;
     setStep("input"); setCaseData(null); setGenerated(""); setError("");
     setPostId(null); setInput(""); setVoted(null); setExistingPost(null);
-    setShowManualInput(false); setManualText("");
+    setShowManualInput(false); setManualText(""); setModelUsed(null);
   };
 
   return (
@@ -1255,6 +1263,15 @@ ${renderSectionsHtml(post.content as string || "")}
                                 <option value="공법">공법</option>
                                 <option value="형사법">형사법</option>
                               </select>
+                              {post.model && (
+                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
+                                  post.model === "claude-opus-4-6"
+                                    ? "text-orange-500 bg-orange-50 border-orange-200"
+                                    : "text-violet-500 bg-violet-50 border-violet-200"
+                                }`}>
+                                  {post.model === "claude-opus-4-6" ? "Claude" : "Gemini"}
+                                </span>
+                              )}
                               <button
                                 onClick={() => adminDeletePost(post.id)}
                                 className="text-[11px] text-red-400 hover:text-red-600 transition-colors"
@@ -1446,15 +1463,26 @@ ${renderSectionsHtml(post.content as string || "")}
                 </svg>
                 {postId ? "목록으로" : "새 문제"}
               </button>
-              <button
-                onClick={() => generate(true)}
-                className="flex items-center gap-1.5 text-[13px] text-zinc-400 hover:text-zinc-700 transition-colors"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                다시 생성
-              </button>
+              <div className="flex items-center gap-2">
+                {isAdmin && modelUsed && (
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                    modelUsed === "claude-opus-4-6"
+                      ? "text-orange-600 bg-orange-50 border-orange-200"
+                      : "text-violet-600 bg-violet-50 border-violet-200"
+                  }`}>
+                    {modelUsed === "claude-opus-4-6" ? "Claude Opus 4.6" : "Gemini 2.5 Pro"}
+                  </span>
+                )}
+                <button
+                  onClick={() => generate(true)}
+                  className="flex items-center gap-1.5 text-[13px] text-zinc-400 hover:text-zinc-700 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  다시 생성
+                </button>
+              </div>
             </div>
 
             <GeneratedContent content={generated} />
