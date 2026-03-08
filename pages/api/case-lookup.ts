@@ -131,6 +131,49 @@ function extractFromFullText(fullText: string, section: "판시사항" | "판결
   return "";
 }
 
+// ─── 헌법재판소 결정례 (target=detc) ───────────────────────────────────────
+
+// 헌재 사건번호 판별: 헌마/헌바/헌가/헌라/헌사/헌아/헌나 등
+function isConstitutionalCase(cn: string): boolean {
+  return /^\d{4}헌[가-힣]/.test(cn);
+}
+
+// detc 검색 응답에서 결정례 목록 추출
+function extractDetcItems(data: unknown): ApiRecord[] {
+  if (!data || typeof data !== "object") return [];
+  const obj = data as Record<string, unknown>;
+  const str = JSON.stringify(obj);
+  if (str.includes("검증에 실패") || (str.includes("인증") && str.includes("실패"))) {
+    console.error("법제처 detc auth failed:", str.slice(0, 200));
+    return [];
+  }
+  const search = obj["DetcSearch"] ?? obj["detcSearch"] ?? obj;
+  if (!search || typeof search !== "object") return [];
+  const s = search as Record<string, unknown>;
+  const detc = s["detc"] ?? s["Detc"] ?? s["result"] ?? s["items"];
+  if (!detc) return [];
+  if (Array.isArray(detc)) return detc as ApiRecord[];
+  if (typeof detc === "object") return [detc as ApiRecord];
+  return [];
+}
+
+// detc 상세 응답 추출
+function extractDetcDetail(data: unknown): ApiRecord | null {
+  if (!data || typeof data !== "object") return null;
+  const str = JSON.stringify(data);
+  if (str.includes("검증에 실패") || (str.includes("인증") && str.includes("실패"))) {
+    console.error("법제처 detc detail auth failed");
+    return null;
+  }
+  const obj = data as Record<string, unknown>;
+  const detail = obj["DetcService"] ?? obj["detcService"] ?? obj;
+  if (!detail || typeof detail !== "object") return null;
+  const d = detail as Record<string, unknown>;
+  const hasData = d["전문"] || d["결정요지"] || d["사건번호"] || d["판시사항"];
+  if (!hasData) return null;
+  return d as ApiRecord;
+}
+
 // ─── glaw.scourt.go.kr (대법원 종합법률정보) 스크래핑 ───────────────────────
 // 저작권 정책: 본문(이유) 섹션 및 사실적 메타데이터만 활용
 // 판시사항/판결요지/참조조문/참조판례는 대법원 저작권 보호 대상이므로 추출하지 않음
@@ -299,6 +342,84 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const normalized = normalizeCase(trimmed);
 
   try {
+    // ── 헌법재판소 결정례 분기 (target=detc) ──────────────────────────────
+    if (isConstitutionalCase(normalized)) {
+      console.log("[detc] 헌재 결정례 검색:", normalized);
+
+      async function searchDetc(query: string): Promise<ApiRecord[]> {
+        const url = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc!)}&target=detc&type=JSON&query=${query}&display=10`;
+        let data = await fetchJson(url);
+        if (!data) data = await fetchJson(url.replace("https://", "http://"));
+        return data ? extractDetcItems(data) : [];
+      }
+
+      function matchDetcExact(items: ApiRecord[]): ApiRecord | undefined {
+        return (
+          items.find((item) => normalizeCase(item["사건번호"] ?? "") === normalized) ||
+          items.find((item) => normalizeCase(item["사건번호"] ?? "") === normalizeCase(trimmed))
+        );
+      }
+
+      let detcFound: ApiRecord | undefined;
+
+      // nb 파라미터로 직접 시도 (detc도 nb 지원 여부 불확실 — query로 우선)
+      const detcItems = await searchDetc(normalized);
+      detcFound = matchDetcExact(detcItems);
+
+      if (!detcFound && normalized !== trimmed) {
+        const detcItems2 = await searchDetc(trimmed);
+        detcFound = matchDetcExact(detcItems2);
+      }
+
+      if (!detcFound) {
+        return res.status(404).json({
+          error: `'${trimmed}'에 해당하는 헌법재판소 결정례를 찾지 못했습니다.`,
+        });
+      }
+
+      console.log("[detc] found:", detcFound["사건번호"], detcFound["사건명"]);
+
+      const detcSerialNo =
+        detcFound["헌재결정례일련번호"] ??
+        detcFound["일련번호"] ??
+        "";
+
+      if (detcSerialNo) {
+        const detailUrl = `https://www.law.go.kr/DRF/lawService.do?OC=${encodeURIComponent(oc!)}&target=detc&ID=${detcSerialNo}&type=JSON`;
+        let detailData = await fetchJson(detailUrl);
+        if (!detailData) detailData = await fetchJson(detailUrl.replace("https://", "http://"));
+
+        const detail = extractDetcDetail(detailData);
+        if (detail) {
+          return res.status(200).json({
+            caseNumber: dig(detail, "사건번호") || trimmed,
+            caseName: dig(detail, "사건명") || detcFound["사건명"] || "",
+            court: "헌법재판소",
+            date: dig(detail, "종국일자") || String(detcFound["종국일자"] || ""),
+            rulingPoints: stripHtml(dig(detail, "판시사항") || ""),
+            rulingRatio: stripHtml(dig(detail, "결정요지") || ""),
+            references: dig(detail, "참조조문") || "",
+            fullText: stripHtml(dig(detail, "전문") || ""),
+            serialNo: String(detcSerialNo),
+          } as CaseData);
+        }
+      }
+
+      // fallback: 검색 결과만으로 응답
+      return res.status(200).json({
+        caseNumber: detcFound["사건번호"] || trimmed,
+        caseName: detcFound["사건명"] || "",
+        court: "헌법재판소",
+        date: String(detcFound["종국일자"] || ""),
+        rulingPoints: stripHtml(detcFound["판시사항"] || ""),
+        rulingRatio: stripHtml(detcFound["결정요지"] || ""),
+        references: "",
+        fullText: "",
+        serialNo: String(detcSerialNo),
+      } as CaseData);
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Step 1: nb 파라미터로 사건번호 직접 검색 (정확도 높음)
     // nb=2008다54877 형태로 사건번호 전용 검색
     async function searchByNb(nb: string): Promise<ApiRecord[]> {
