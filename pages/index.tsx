@@ -7,6 +7,7 @@ import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc
 import type { CaseData } from "./api/case-lookup";
 import AdminBatchGenerator, { type AppendPayload } from "@/components/AdminBatchGenerator";
 import AdminImportantCases from "@/components/AdminImportantCases";
+import AuthModal from "@/components/AuthModal";
 
 const ADMIN_EMAIL = "admin@casegenerator.com";
 
@@ -525,9 +526,10 @@ function getAnonName(): string {
 
 /* ── 메인 페이지 ── */
 export default function Home() {
-  const { user, signInWithGoogle } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const isAdmin = user?.email === ADMIN_EMAIL;
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const [activeTab, setActiveTab] = useState<LawArea>("민사법");
   const [step, setStep] = useState<Step>("input");
@@ -975,6 +977,7 @@ ${renderSectionsHtml(post.content as string || "")}
   };
 
   return (
+    <>
     <Layout title="Case Generator" onLogoClick={reset}>
       <div className="max-w-[800px] mx-auto px-6">
 
@@ -1084,7 +1087,7 @@ ${renderSectionsHtml(post.content as string || "")}
             {!user && (
               <p className="mt-3 text-[12px] text-zinc-400">
                 문제를 생성하려면{" "}
-                <button onClick={signInWithGoogle} className="text-blue-600 hover:underline font-medium">
+                <button onClick={() => setShowAuthModal(true)} className="text-blue-600 hover:underline font-medium">
                   로그인
                 </button>
                 이 필요합니다.
@@ -1371,7 +1374,7 @@ ${renderSectionsHtml(post.content as string || "")}
               <div className="mt-4 flex justify-end items-center gap-3">
                 <span className="text-[13px] text-zinc-500">문제를 생성하려면 로그인이 필요합니다.</span>
                 <button
-                  onClick={signInWithGoogle}
+                  onClick={() => setShowAuthModal(true)}
                   className="h-10 px-5 bg-zinc-800 text-white rounded-xl text-[14px] font-semibold hover:bg-zinc-700 transition-colors"
                 >
                   로그인
@@ -1552,5 +1555,8 @@ ${renderSectionsHtml(post.content as string || "")}
         <div className="h-20" />
       </div>
     </Layout>
+
+    {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+    </>
   );
 }
