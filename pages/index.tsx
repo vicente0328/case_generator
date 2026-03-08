@@ -1421,7 +1421,7 @@ ${renderSectionsHtml(post.content as string || "")}
                   onClick={reset}
                   className="text-[13px] text-zinc-400 hover:text-zinc-700 transition-colors"
                 >
-                  ← 새 문제
+                  {postId ? "← 목록으로" : "← 새 문제"}
                 </button>
                 {isAdmin && postId && (
                   <button

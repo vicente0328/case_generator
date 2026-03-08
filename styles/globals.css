@@ -27,6 +27,12 @@
 
   a { color: inherit; text-decoration: none; }
 
+  /* 모바일 탭 하이라이트(파란색 글리치) 제거 */
+  button, a, [role="button"], input, select, textarea {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
   h1, h2, h3 { letter-spacing: -0.03em; }
 
   ::-webkit-scrollbar { width: 0; background: transparent; }
