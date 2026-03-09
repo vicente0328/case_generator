@@ -297,7 +297,7 @@ function GeneratedContent({ content }: { content: string }) {
 
 /* ── 댓글 ── */
 function Comments({ postId }: { postId: string }) {
-  const { user } = useAuth();
+  const { user, customDisplayName } = useAuth();
   const isAdmin = user?.email === ADMIN_EMAIL;
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState("");
@@ -319,7 +319,7 @@ function Comments({ postId }: { postId: string }) {
     setSubmitting(true);
     setError("");
     try {
-      const name = user.displayName || user.email?.split("@")[0] || "익명";
+      const name = customDisplayName || user.displayName || user.email?.split("@")[0] || "익명";
       const ref = await addDoc(collection(db, "posts", postId, "comments"), {
         userId: user.uid, userName: name, text: text.trim(), createdAt: serverTimestamp(), deleted: false,
       });
@@ -526,7 +526,7 @@ function getAnonName(): string {
 
 /* ── 메인 페이지 ── */
 export default function Home() {
-  const { user } = useAuth();
+  const { user, customDisplayName } = useAuth();
   const router = useRouter();
   const isAdmin = user?.email === ADMIN_EMAIL;
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -617,7 +617,7 @@ export default function Home() {
     if (step === "done" && generated && !postId && !autoSaveRef.current && caseData) {
       autoSaveRef.current = true;
       const userName = user
-        ? (user.displayName || user.email?.split("@")[0] || "익명")
+        ? (customDisplayName || user.displayName || user.email?.split("@")[0] || "익명")
         : getAnonName();
       const postLawArea = classifyLawArea(caseData.caseNumber);
       addDoc(collection(db, "posts"), {
@@ -1412,6 +1412,7 @@ ${renderSectionsHtml(post.content as string || "")}
                   </svg>
                   문제 생성하기
                 </button>
+                <span className="text-[11px] text-zinc-400">생성에 30초~1분 소요됩니다</span>
               </div>
             ) : (
               /* 기존 문제 없음 + 비로그인 → 로그인 안내 */
