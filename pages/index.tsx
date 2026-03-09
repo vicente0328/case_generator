@@ -994,6 +994,24 @@ ${renderSectionsHtml(post.content as string || "")}
           <p className="text-[14px] text-zinc-400">사건번호로 변시 사례형 문제를 생성합니다</p>
         </div>
 
+        {/* 공지사항 */}
+        {step === "input" && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50/70 px-5 py-4">
+            <div className="flex items-start gap-3">
+              <span className="text-amber-400 mt-0.5 flex-shrink-0 text-[15px]">🎉</span>
+              <div>
+                <p className="text-[12px] font-bold text-amber-700 mb-1.5 tracking-wide">오픈 기념 이벤트 · ~3월 15일(일)</p>
+                <p className="text-[12px] text-amber-800 leading-relaxed">
+                  문제를 <span className="font-semibold">3개 이상 생성</span>하고 캡처해서 하단 &quot;개발자에게 문의하기&quot;로 메일 보내주시면, 소정의 감사 선물을 드립니다.
+                </p>
+                <p className="text-[11px] text-amber-600 mt-2">
+                  선착순 5분 · 랜덤 추첨 5분 (총 10분) — 스타벅스 아메리카노 기프티콘
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 법역 탭 */}
         <div className="flex gap-1 mb-6 bg-white border border-zinc-100 rounded-xl p-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           {(["민사법", "공법", "형사법"] as LawArea[]).map(tab => (
