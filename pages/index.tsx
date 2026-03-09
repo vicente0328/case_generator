@@ -555,7 +555,7 @@ export default function Home() {
   const [manualText, setManualText] = useState("");
   const [batchAppendPayload, setBatchAppendPayload] = useState<AppendPayload>({ cases: [], version: 0 });
   const [modelUsed, setModelUsed] = useState<string | null>(null);
-  const [guestModeEnabled, setGuestModeEnabled] = useState(false);
+  const [guestModeEnabled, setGuestModeEnabled] = useState(true);
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
