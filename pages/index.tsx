@@ -1093,11 +1093,7 @@ ${renderSectionsHtml(post.content as string || "")}
 
             {!user && (
               <p className="mt-3 text-[12px] text-zinc-400">
-                문제를 생성하려면{" "}
-                <button onClick={() => setShowAuthModal(true)} className="text-blue-600 hover:underline font-medium">
-                  로그인
-                </button>
-                이 필요합니다.
+                베타 서비스 기간 중에는 로그인 없이도 문제를 생성하실 수 있습니다.
               </p>
             )}
 
