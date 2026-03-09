@@ -1412,7 +1412,6 @@ ${renderSectionsHtml(post.content as string || "")}
                   </svg>
                   문제 생성하기
                 </button>
-                <span className="text-[11px] text-zinc-400">생성에 30초~1분 소요됩니다</span>
               </div>
             ) : (
               /* 기존 문제 없음 + 비로그인 → 로그인 안내 */
@@ -1436,6 +1435,7 @@ ${renderSectionsHtml(post.content as string || "")}
             <div className="bg-white rounded-xl border border-zinc-100 px-6 py-5 flex gap-4 items-start">
               <div className="w-4 h-4 border-2 border-zinc-200 border-t-zinc-600 rounded-full animate-spin mt-0.5 flex-shrink-0" />
               <div className="space-y-2.5">
+                <p className="text-[11px] text-zinc-400 pb-1">문제 생성에 30초~1분가량 소요됩니다.</p>
                 {PROGRESS_STEPS.map((label, i) => (
                   <div key={i} className="flex items-center gap-2.5">
                     {checkedSteps[i] ? (

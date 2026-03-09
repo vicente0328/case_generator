@@ -81,19 +81,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const trimmed = name.trim();
     if (!trimmed) return;
 
-    // 1. Firebase Auth 업데이트
+    // 1. Firebase Auth 업데이트 (필수)
     await updateProfile(user, { displayName: trimmed });
 
-    // 2. Firestore users/{uid} 저장
-    await setDoc(doc(db, "users", user.uid), { displayName: trimmed }, { merge: true });
+    // 2. Firestore users/{uid} 저장 (Firestore 보안 규칙에 따라 실패 가능)
+    try {
+      await setDoc(doc(db, "users", user.uid), { displayName: trimmed }, { merge: true });
+    } catch (e) {
+      console.error("[updateDisplayName] users 컬렉션 저장 실패 (Firestore 규칙 확인 필요):", e);
+    }
 
     // 3. 본인 게시글 userName 일괄 업데이트
-    const postsQuery = query(collection(db, "posts"), where("userId", "==", user.uid));
-    const postsSnap = await getDocs(postsQuery);
-    if (!postsSnap.empty) {
-      const batch = writeBatch(db);
-      postsSnap.docs.forEach(d => batch.update(d.ref, { userName: trimmed }));
-      await batch.commit();
+    try {
+      const postsQuery = query(collection(db, "posts"), where("userId", "==", user.uid));
+      const postsSnap = await getDocs(postsQuery);
+      if (!postsSnap.empty) {
+        const batch = writeBatch(db);
+        postsSnap.docs.forEach(d => batch.update(d.ref, { userName: trimmed }));
+        await batch.commit();
+      }
+    } catch (e) {
+      console.error("[updateDisplayName] 게시글 일괄 업데이트 실패:", e);
     }
 
     // 4. 로컬 상태 즉시 반영
