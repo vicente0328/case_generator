@@ -555,6 +555,7 @@ export default function Home() {
   const [manualText, setManualText] = useState("");
   const [batchAppendPayload, setBatchAppendPayload] = useState<AppendPayload>({ cases: [], version: 0 });
   const [modelUsed, setModelUsed] = useState<string | null>(null);
+  const [guestModeEnabled, setGuestModeEnabled] = useState(false);
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
@@ -594,6 +595,12 @@ export default function Home() {
     const almostDoneTimer = setTimeout(() => setShowAlmostDone(true), 24000);
     return () => { timers.forEach(clearTimeout); clearTimeout(almostDoneTimer); };
   }, [step]);
+
+  useEffect(() => {
+    getDoc(doc(db, "settings", "config")).then(snap => {
+      if (snap.exists()) setGuestModeEnabled(!!snap.data().guestGenerationEnabled);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setFeedLoading(true);
@@ -760,7 +767,7 @@ export default function Home() {
 
   const generate = async (fresh = false) => {
     if (!caseData) return;
-    if (!user) { setError("로그인이 필요합니다."); return; }
+    if (!user && !guestModeEnabled) { setError("로그인이 필요합니다."); return; }
 
     if (fresh) {
       prefetchAbortRef.current?.abort();
@@ -1312,6 +1319,26 @@ ${renderSectionsHtml(post.content as string || "")}
 
             {isAdmin && user && (
               <>
+                <div className="bg-white rounded-xl border border-zinc-100 px-5 py-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-[13px] font-semibold text-zinc-700">비로그인 문제 생성 허용</p>
+                    <p className="text-[12px] text-zinc-400 mt-0.5">
+                      {guestModeEnabled
+                        ? "현재 누구나 로그인 없이 문제를 생성할 수 있습니다."
+                        : "현재 로그인한 사용자만 문제를 생성할 수 있습니다."}
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const newVal = !guestModeEnabled;
+                      setGuestModeEnabled(newVal);
+                      await setDoc(doc(db, "settings", "config"), { guestGenerationEnabled: newVal }, { merge: true });
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${guestModeEnabled ? "bg-blue-900" : "bg-zinc-200"}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${guestModeEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                  </button>
+                </div>
                 <AdminImportantCases
                   onAppendCases={(nums) =>
                     setBatchAppendPayload((prev) => ({ cases: nums, version: prev.version + 1 }))
@@ -1356,8 +1383,8 @@ ${renderSectionsHtml(post.content as string || "")}
                   </button>
                 </div>
               </div>
-            ) : user ? (
-              /* 기존 문제 없음 + 로그인 → 바로 생성 */
+            ) : (user || guestModeEnabled) ? (
+              /* 기존 문제 없음 + 로그인(또는 게스트 허용) → 바로 생성 */
               <div className="mt-4 flex justify-end">
                 <button
                   onClick={() => generate()}
