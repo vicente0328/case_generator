@@ -116,6 +116,18 @@ export default function Layout({ children, title = "Case Generator", onLogoClick
         </main>
 
         <footer className="py-8 text-center text-[11px] text-zinc-300">
+          <div className="mb-3">
+            <a
+              href="mailto:kennethkoh97@gmail.com?subject=Case Generator 문의"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-zinc-200 rounded-lg text-[12px] text-zinc-500 hover:text-zinc-800 hover:border-zinc-300 hover:shadow-sm transition-all"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="20" height="16" x="2" y="4" rx="2"/>
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+              </svg>
+              개발자에게 문의하기
+            </a>
+          </div>
           © {new Date().getFullYear()} Case Generator
         </footer>
       </div>
