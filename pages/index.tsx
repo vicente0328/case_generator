@@ -550,6 +550,7 @@ export default function Home() {
   const [feedLoading, setFeedLoading] = useState(true);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([false, false, false, false, false]);
   const [showAlmostDone, setShowAlmostDone] = useState(false);
+  const [showEncouragement, setShowEncouragement] = useState(false);
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualText, setManualText] = useState("");
@@ -586,6 +587,7 @@ export default function Home() {
     if (step !== "generating") {
       setCheckedSteps([false, false, false, false, false]);
       setShowAlmostDone(false);
+      setShowEncouragement(false);
       return;
     }
     const timers = STEP_DELAYS.map((delay, i) =>
@@ -593,7 +595,8 @@ export default function Home() {
     );
     // 마지막 단계 체크(20s) 후 4초 지나도 완료 안 되면 안내 메시지 표시
     const almostDoneTimer = setTimeout(() => setShowAlmostDone(true), 24000);
-    return () => { timers.forEach(clearTimeout); clearTimeout(almostDoneTimer); };
+    const encouragementTimer = setTimeout(() => setShowEncouragement(true), 29000);
+    return () => { timers.forEach(clearTimeout); clearTimeout(almostDoneTimer); clearTimeout(encouragementTimer); };
   }, [step]);
 
   useEffect(() => {
@@ -1449,6 +1452,11 @@ ${renderSectionsHtml(post.content as string || "")}
                 {showAlmostDone && (
                   <p className="text-[12px] text-zinc-400 pt-1 pl-6">
                     잠시만 기다려 주세요. 거의 다 완성되었습니다.
+                  </p>
+                )}
+                {showEncouragement && (
+                  <p className="text-[12px] text-zinc-400 pt-1 pl-6">
+                    문제 만드는 게 진짜 어려운 일이군요. 정말 다 됐으니까 믿어주세요.
                   </p>
                 )}
               </div>
