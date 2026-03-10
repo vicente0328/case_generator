@@ -1560,6 +1560,10 @@ ${renderSectionsHtml(post.content as string || "")}
               </div>
             </div>
 
+            <p className="text-[11px] text-zinc-400 text-center leading-relaxed">
+              * 본 문제의 사실관계는 판례를 바탕으로 학습 목적에 맞게 일부 각색되었을 수 있습니다. 참고용으로만 활용하여 주시기 바랍니다.
+            </p>
+
             <GeneratedContent content={generated} />
 
             {caseData?.fullText && <FullTextSection fullText={caseData.fullText} court={caseData.court} />}
