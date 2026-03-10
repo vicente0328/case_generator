@@ -1560,17 +1560,16 @@ ${renderSectionsHtml(post.content as string || "")}
               </div>
             </div>
 
-            <p className="text-[11px] text-zinc-400 text-center leading-relaxed">
-              * 본 문제의 사실관계는 판례를 바탕으로 학습 목적에 맞게 일부 각색되었을 수 있습니다. 참고용으로만 활용하여 주시기 바랍니다.
-            </p>
-
             <GeneratedContent content={generated} />
 
             {caseData?.fullText && <FullTextSection fullText={caseData.fullText} court={caseData.court} />}
 
             {/* 액션 바 */}
-            <div className="mt-8 pt-6 border-t border-zinc-100 flex items-center justify-end">
-              <div className="flex items-center gap-3">
+            <div className="mt-8 pt-6 border-t border-zinc-100 flex items-center justify-between gap-4">
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
+                사실관계는 판례를 바탕으로 학습 목적에 맞게 일부 각색되었을 수 있습니다.
+              </p>
+              <div className="flex items-center gap-3 flex-shrink-0">
                 {isAdmin && postId && (
                   <button
                     onClick={() => adminDeletePost(postId)}
