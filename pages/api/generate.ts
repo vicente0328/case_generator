@@ -274,7 +274,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
     ? `${courtName} ${dateStr} 선고 ${caseData.caseNumber} ${rulingType}`
     : `${courtName} ${caseData.caseNumber} ${rulingType}`;
 
-  let modelUsed = "gemini-2.5-pro";
+  let modelUsed = "gemini-3-flash-preview";
 
   function is503(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err);
@@ -284,7 +284,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
   async function tryGemini(): Promise<void> {
     const genAI = new GoogleGenerativeAI(apiKey!);
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-pro",
+      model: "gemini-3-flash-preview",
       systemInstruction: getSystemPrompt(lawArea),
     });
     const { stream } = await model.generateContentStream(userPrompt);
@@ -324,7 +324,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
       await tryGemini();
     } catch (err1) {
       if (!is503(err1)) throw err1;
-      console.warn("gemini-2.5-pro 503 → claude-opus-4-6 폴백");
+      console.warn("gemini-3-flash-preview 503 → claude-opus-4-6 폴백");
       await tryClaude();
     }
 
