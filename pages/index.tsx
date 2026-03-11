@@ -726,10 +726,15 @@ export default function Home() {
       getDocs(query(
         collection(db, "posts"),
         where("caseNumber", "==", data.caseNumber),
-        limit(1)
       )).then(snap => {
         if (!snap.empty) {
-          const d = snap.docs[0];
+          // 가장 최근에 생성된 문제 선택
+          const sorted = snap.docs.slice().sort((a, b) => {
+            const aTime = (a.data().createdAt?.toMillis?.() ?? 0) as number;
+            const bTime = (b.data().createdAt?.toMillis?.() ?? 0) as number;
+            return bTime - aTime;
+          });
+          const d = sorted[0];
           setExistingPost({ id: d.id, ...d.data() } as PostPreview);
           prefetchAbortRef.current?.abort(); // 기존 문제 있으면 프리페치 중단
           prefetchRef.current = null;
@@ -1385,7 +1390,7 @@ ${renderSectionsHtml(post.content as string || "")}
             <CaseCard data={caseData} onReset={reset} />
 
             {existingPost ? (
-              /* 기존 문제 있음 → 선택지 제시 */
+              /* 기존 문제 있음 → 기존 문제 보기 (admin은 새로 생성 가능) */
               <div className="mt-4 bg-white rounded-xl border border-zinc-100 px-5 py-4">
                 <p className="text-[13px] text-zinc-500 mb-3">
                   이 판례로 생성된 문제가 이미 있습니다.
@@ -1397,12 +1402,14 @@ ${renderSectionsHtml(post.content as string || "")}
                   >
                     기존 문제 보기
                   </button>
-                  <button
-                    onClick={() => { setExistingPost(null); runPrefetch(caseData); generate(); }}
-                    className="flex-1 h-10 bg-white border border-zinc-200 text-zinc-600 rounded-xl text-[14px] font-semibold hover:border-zinc-400 hover:text-zinc-900 transition-colors"
-                  >
-                    새로 생성하기
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => { setExistingPost(null); runPrefetch(caseData); generate(); }}
+                      className="flex-1 h-10 bg-white border border-zinc-200 text-zinc-600 rounded-xl text-[14px] font-semibold hover:border-zinc-400 hover:text-zinc-900 transition-colors"
+                    >
+                      새로 생성하기
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (user || guestModeEnabled) ? (
