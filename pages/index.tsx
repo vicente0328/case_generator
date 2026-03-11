@@ -556,6 +556,7 @@ export default function Home() {
   const [manualText, setManualText] = useState("");
   const [batchAppendPayload, setBatchAppendPayload] = useState<AppendPayload>({ cases: [], version: 0 });
   const [modelUsed, setModelUsed] = useState<string | null>(null);
+  const [generationCost, setGenerationCost] = useState<{ inputTokens: number; outputTokens: number; costUsd: number } | null>(null);
   const [guestModeEnabled, setGuestModeEnabled] = useState(true);
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
@@ -566,6 +567,7 @@ export default function Home() {
     done: boolean;
     error: string | null;
     model: string | null;
+    cost: { inputTokens: number; outputTokens: number; costUsd: number } | null;
     notify: (() => void) | null;
   } | null>(null);
 
@@ -661,7 +663,7 @@ export default function Home() {
     const controller = new AbortController();
     prefetchAbortRef.current = controller;
 
-    const state = { text: "", done: false, error: null as string | null, model: null as string | null, notify: null as (() => void) | null };
+    const state = { text: "", done: false, error: null as string | null, model: null as string | null, cost: null as { inputTokens: number; outputTokens: number; costUsd: number } | null, notify: null as (() => void) | null };
     prefetchRef.current = state;
 
     (async () => {
@@ -689,7 +691,7 @@ export default function Home() {
             try {
               const payload = JSON.parse(line.slice(6));
               if (payload.error) { state.error = payload.error; state.notify?.(); return; }
-              if (payload.done) { state.done = true; state.model = payload.model || null; state.notify?.(); return; }
+              if (payload.done) { state.done = true; state.model = payload.model || null; state.cost = payload.cost || null; state.notify?.(); return; }
               if (payload.text) { state.text += payload.text; state.notify?.(); }
             } catch {}
           }
@@ -795,6 +797,7 @@ export default function Home() {
         if (prefetch.done) {
           setGenerated(prefetch.text);
           setModelUsed(prefetch.model);
+          setGenerationCost(prefetch.cost);
           setStep("done");
           setLoadingGen(false);
         }
@@ -833,7 +836,7 @@ export default function Home() {
           try {
             const payload = JSON.parse(line.slice(6));
             if (payload.error) throw new Error(payload.error);
-            if (payload.done) { usedModel = payload.model || null; setModelUsed(usedModel); setGenerated(fullText); setStep("done"); return; }
+            if (payload.done) { usedModel = payload.model || null; setModelUsed(usedModel); setGenerationCost(payload.cost || null); setGenerated(fullText); setStep("done"); return; }
             if (payload.text) fullText += payload.text;
           } catch (e) {
             if (e instanceof Error && e.message !== "Unexpected end of JSON input") throw e;
@@ -983,7 +986,7 @@ ${renderSectionsHtml(post.content as string || "")}
     autoSaveRef.current = false;
     setStep("input"); setCaseData(null); setGenerated(""); setError("");
     setPostId(null); setInput(""); setVoted(null); setExistingPost(null);
-    setShowManualInput(false); setManualText(""); setModelUsed(null);
+    setShowManualInput(false); setManualText(""); setModelUsed(null); setGenerationCost(null);
   };
 
   return (
@@ -1540,13 +1543,20 @@ ${renderSectionsHtml(post.content as string || "")}
               </button>
               <div className="flex items-center gap-2">
                 {isAdmin && modelUsed && (
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                    modelUsed === "claude-opus-4-6"
-                      ? "text-orange-600 bg-orange-50 border-orange-200"
-                      : "text-violet-600 bg-violet-50 border-violet-200"
-                  }`}>
-                    {modelUsed === "claude-opus-4-6" ? "Claude Opus 4.6" : "Gemini 3.1 Pro Preview"}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                      modelUsed === "claude-opus-4-6"
+                        ? "text-orange-600 bg-orange-50 border-orange-200"
+                        : "text-violet-600 bg-violet-50 border-violet-200"
+                    }`}>
+                      {modelUsed === "claude-opus-4-6" ? "Claude Opus 4.6" : "Gemini 3.1 Pro Preview"}
+                    </span>
+                    {generationCost && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border text-emerald-700 bg-emerald-50 border-emerald-200" title={`입력 ${generationCost.inputTokens.toLocaleString()}토큰 / 출력 ${generationCost.outputTokens.toLocaleString()}토큰`}>
+                        ${generationCost.costUsd.toFixed(4)} (~₩{Math.round(generationCost.costUsd * 1450).toLocaleString()})
+                      </span>
+                    )}
+                  </div>
                 )}
                 <button
                   onClick={() => generate(true)}

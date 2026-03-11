@@ -275,6 +275,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
     : `${courtName} ${caseData.caseNumber} ${rulingType}`;
 
   let modelUsed = "gemini-3.1-pro-preview";
+  let costInfo: { inputTokens: number; outputTokens: number; costUsd: number } | null = null;
 
   function is503(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err);
@@ -287,12 +288,20 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
       model: "gemini-3.1-pro-preview",
       systemInstruction: getSystemPrompt(lawArea),
     });
-    const { stream } = await model.generateContentStream(userPrompt);
-    for await (const chunk of stream) {
+    const result = await model.generateContentStream(userPrompt);
+    for await (const chunk of result.stream) {
       const text = chunk.text();
       if (text) send({ text });
     }
-    modelUsed = "gemini-2.5-pro";
+    const finalResponse = await result.response;
+    const usage = finalResponse.usageMetadata;
+    if (usage) {
+      const inputTokens = usage.promptTokenCount ?? 0;
+      const outputTokens = usage.candidatesTokenCount ?? 0;
+      // gemini-3.1-pro-preview 가격: 입력 $2/1M, 출력 $12/1M (≤200K 토큰 기준)
+      costInfo = { inputTokens, outputTokens, costUsd: (inputTokens * 2 + outputTokens * 12) / 1_000_000 };
+    }
+    modelUsed = "gemini-3.1-pro-preview";
   }
 
   async function tryClaude(): Promise<void> {
@@ -313,6 +322,14 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
         send({ text: event.delta.text });
       }
     }
+    const finalMsg = await stream.finalMessage();
+    const usage = finalMsg.usage;
+    // claude-opus-4-6 가격: 입력 $15/1M, 출력 $75/1M
+    costInfo = {
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      costUsd: (usage.input_tokens * 15 + usage.output_tokens * 75) / 1_000_000,
+    };
     modelUsed = "claude-opus-4-6";
   }
 
@@ -328,7 +345,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
       await tryClaude();
     }
 
-    send({ done: true, model: modelUsed });
+    send({ done: true, model: modelUsed, cost: costInfo });
   } catch (err: unknown) {
     console.error("generate error:", err);
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
