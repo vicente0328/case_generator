@@ -7,6 +7,7 @@ import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc
 import type { CaseData } from "./api/case-lookup";
 import AdminBatchGenerator, { type AppendPayload } from "@/components/AdminBatchGenerator";
 import AdminImportantCases from "@/components/AdminImportantCases";
+import AdminPromptEditor from "@/components/AdminPromptEditor";
 import AuthModal from "@/components/AuthModal";
 
 const ADMIN_EMAIL = "admin@casegenerator.com";
@@ -1359,6 +1360,7 @@ ${renderSectionsHtml(post.content as string || "")}
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${guestModeEnabled ? "translate-x-6" : "translate-x-1"}`} />
                   </button>
                 </div>
+                <AdminPromptEditor />
                 <AdminImportantCases
                   onAppendCases={(nums) =>
                     setBatchAppendPayload((prev) => ({ cases: nums, version: prev.version + 1 }))
