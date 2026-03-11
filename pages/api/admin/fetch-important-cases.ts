@@ -185,7 +185,7 @@ async function fetchFromGeminiGrounding(
 ): Promise<{ caseNumbers: string[]; error?: string }> {
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
 
     const fromYear = CURRENT_YEAR - 3;
     const prompt = `${fromYear}년부터 ${CURRENT_YEAR}년 사이에 선고된 대한민국 대법원·헌법재판소 판례 중 법학계에서 중요하게 다루어진 판례를 Google 검색을 통해 찾아주세요.
@@ -242,7 +242,7 @@ async function fetchFromGeminiKnowledge(
 ): Promise<{ caseNumbers: string[]; error?: string }> {
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
 
     // Gemini 지식 컷오프 고려: 2024년 이전까지의 판례는 신뢰할 수 있지만
     // 2025년 이후는 hallucination 위험이 높음 → 2022~2024년에 집중하도록 유도
@@ -302,7 +302,7 @@ async function classifyWithGemini(
   cases: Array<{ caseNumber: string; caseName?: string }>
 ): Promise<{ 민사법: string[]; 공법: string[]; 형사법: string[] }> {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
 
   const list = cases
     .slice(0, 160)
