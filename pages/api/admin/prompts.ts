@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { admin } from "@/lib/firebaseAdmin";
+import { SYSTEM_PROMPT_CIVIL, SYSTEM_PROMPT_PUBLIC, SYSTEM_PROMPT_CRIMINAL } from "@/lib/defaultPrompts";
 
 const ADMIN_EMAIL = "admin@casegenerator.com";
 
@@ -29,6 +30,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       civil: data?.civil ?? null,
       public: data?.public ?? null,
       criminal: data?.criminal ?? null,
+      defaults: {
+        civil: SYSTEM_PROMPT_CIVIL,
+        public: SYSTEM_PROMPT_PUBLIC,
+        criminal: SYSTEM_PROMPT_CRIMINAL,
+      },
     });
   }
 

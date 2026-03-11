@@ -16,6 +16,7 @@ const AREA_STYLE: Record<LawArea, { tab: string; activeTab: string }> = {
 };
 
 type PromptMap = { civil: string | null; public: string | null; criminal: string | null };
+type DefaultMap = { civil: string; public: string; criminal: string };
 
 async function getToken(): Promise<string | null> {
   const user = auth.currentUser;
@@ -25,7 +26,11 @@ async function getToken(): Promise<string | null> {
 
 export default function AdminPromptEditor() {
   const [activeTab, setActiveTab] = useState<LawArea>("민사법");
+  // Firestore에 저장된 커스텀 프롬프트 (null = 미설정)
   const [prompts, setPrompts] = useState<PromptMap>({ civil: null, public: null, criminal: null });
+  // 코드 기본값
+  const [defaults, setDefaults] = useState<DefaultMap | null>(null);
+  // textarea에 표시 중인 값
   const [edited, setEdited] = useState<PromptMap>({ civil: null, public: null, criminal: null });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -41,9 +46,15 @@ export default function AdminPromptEditor() {
         const res = await fetch("/api/admin/prompts", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const data: PromptMap = await res.json();
-        setPrompts(data);
-        setEdited(data);
+        const data = await res.json() as PromptMap & { defaults: DefaultMap };
+        setPrompts({ civil: data.civil, public: data.public, criminal: data.criminal });
+        setDefaults(data.defaults);
+        // 커스텀이 있으면 커스텀, 없으면 기본값을 textarea에 표시
+        setEdited({
+          civil:    data.civil    ?? data.defaults.civil,
+          public:   data.public   ?? data.defaults.public,
+          criminal: data.criminal ?? data.defaults.criminal,
+        });
       } catch {
         setStatus({ type: "error", msg: "프롬프트 불러오기 실패" });
       } finally {
@@ -53,21 +64,20 @@ export default function AdminPromptEditor() {
   }, [isOpen]);
 
   const key = AREA_KEYS[activeTab];
-  const currentValue = edited[key] ?? "";
   const isCustom = prompts[key] !== null;
-  const isDirty = edited[key] !== prompts[key];
+  // 현재 표시값이 저장된 값(커스텀 or 기본값)과 다른지
+  const savedValue = prompts[key] ?? (defaults?.[key] ?? "");
+  const isDirty = edited[key] !== savedValue;
 
   const handleSave = async () => {
     setSaving(true);
     setStatus(null);
     try {
       const token = await getToken();
-      const body: Partial<Record<"civil" | "public" | "criminal", string>> = {};
-      body[key] = edited[key] ?? "";
       const res = await fetch("/api/admin/prompts", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ [key === "public" ? "public" : key]: body[key] }),
+        body: JSON.stringify({ [key]: edited[key] }),
       });
       if (!res.ok) throw new Error();
       setPrompts(prev => ({ ...prev, [key]: edited[key] }));
@@ -92,7 +102,8 @@ export default function AdminPromptEditor() {
       });
       if (!res.ok) throw new Error();
       setPrompts(prev => ({ ...prev, [key]: null }));
-      setEdited(prev => ({ ...prev, [key]: null }));
+      // 초기화 후 textarea에 기본값 표시
+      setEdited(prev => ({ ...prev, [key]: defaults?.[key] ?? "" }));
       setStatus({ type: "success", msg: "기본값으로 초기화되었습니다." });
     } catch {
       setStatus({ type: "error", msg: "초기화 실패" });
@@ -160,9 +171,8 @@ export default function AdminPromptEditor() {
 
               {/* 텍스트에어리어 */}
               <textarea
-                value={currentValue}
+                value={edited[key] ?? ""}
                 onChange={e => setEdited(prev => ({ ...prev, [key]: e.target.value }))}
-                placeholder="비어있으면 코드 기본값을 사용합니다."
                 className="mt-2 w-full h-96 text-[12px] font-mono leading-relaxed border border-zinc-200 rounded-lg px-3 py-2.5 resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
                 spellCheck={false}
               />
