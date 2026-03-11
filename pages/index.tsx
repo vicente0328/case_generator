@@ -1545,7 +1545,7 @@ ${renderSectionsHtml(post.content as string || "")}
                       ? "text-orange-600 bg-orange-50 border-orange-200"
                       : "text-violet-600 bg-violet-50 border-violet-200"
                   }`}>
-                    {modelUsed === "claude-opus-4-6" ? "Claude Opus 4.6" : "Gemini 2.5 Pro"}
+                    {modelUsed === "claude-opus-4-6" ? "Claude Opus 4.6" : "Gemini 3.1 Pro Preview"}
                   </span>
                 )}
                 <button
