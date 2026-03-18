@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "pages/api/case-lookup.ts": {
+      "maxDuration": 30
+    }
+  }
+}
