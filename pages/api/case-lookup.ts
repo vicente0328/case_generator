@@ -17,19 +17,25 @@ type ApiRecord = Record<string, string>;
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://case-generator-eight.vercel.app";
 
 async function fetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, {
-    headers: {
-      Referer: `${SITE_URL}/`,
-      Origin: SITE_URL,
-      "User-Agent": "Mozilla/5.0 (compatible; CaseGenerator/1.0)",
-    },
-  });
-  const text = await res.text();
-  const clean = text.replace(/^\uFEFF/, "").trim();
   try {
-    return JSON.parse(clean);
-  } catch {
-    console.error("JSON parse failed:", clean.slice(0, 300));
+    const res = await fetch(url, {
+      headers: {
+        Referer: `${SITE_URL}/`,
+        Origin: SITE_URL,
+        "User-Agent": "Mozilla/5.0 (compatible; CaseGenerator/1.0)",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    const text = await res.text();
+    const clean = text.replace(/^\uFEFF/, "").trim();
+    try {
+      return JSON.parse(clean);
+    } catch {
+      console.error("JSON parse failed:", clean.slice(0, 300));
+      return null;
+    }
+  } catch (e) {
+    console.error("fetchJson failed:", url, e instanceof Error ? e.message : e);
     return null;
   }
 }
