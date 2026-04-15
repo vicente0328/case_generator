@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { auth, db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, limit, getDoc, where, deleteDoc, runTransaction, setDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, increment, getDoc, where, deleteDoc, runTransaction, setDoc } from "firebase/firestore";
 import type { CaseData } from "./api/case-lookup";
 import AdminBatchGenerator, { type AppendPayload } from "@/components/AdminBatchGenerator";
 import AdminImportantCases from "@/components/AdminImportantCases";
@@ -44,6 +44,7 @@ interface PostPreview {
   userName: string;
   lawArea?: LawArea;
   model?: string;
+  createdAt?: { toMillis?: () => number };
 }
 
 interface Section {
@@ -543,11 +544,12 @@ export default function Home() {
   const [postId, setPostId] = useState<string | null>(null);
   const [voted, setVoted] = useState<"likes" | "needsReview" | null>(null);
   const [feedPosts, setFeedPosts] = useState<PostPreview[]>([]);
+  const [tabsLoaded, setTabsLoaded] = useState<Set<LawArea>>(new Set());
   const [existingPost, setExistingPost] = useState<PostPreview | null>(null);
   const [feedSearch, setFeedSearch] = useState("");
   const [feedFilter, setFeedFilter] = useState<"all" | "mine">("all");
   const [feedSort, setFeedSort] = useState<"recent" | "date" | "likes">("recent");
-  const [displayCount, setDisplayCount] = useState(10);
+  const [feedPage, setFeedPage] = useState(1);
   const [feedLoading, setFeedLoading] = useState(true);
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([false, false, false, false, false]);
   const [showAlmostDone, setShowAlmostDone] = useState(false);
@@ -608,13 +610,23 @@ export default function Home() {
     }).catch(() => {});
   }, []);
 
-  useEffect(() => {
+  const loadTab = useCallback((tab: LawArea) => {
     setFeedLoading(true);
-    getDocs(query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(200)))
-      .then(snap => setFeedPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as PostPreview))))
+    getDocs(query(collection(db, "posts"), where("lawArea", "==", tab)))
+      .then(snap => {
+        const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() } as PostPreview));
+        setFeedPosts(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newPosts = loaded.filter(p => !existingIds.has(p.id));
+          return [...prev, ...newPosts];
+        });
+        setTabsLoaded(prev => new Set([...prev, tab]));
+      })
       .catch(() => {})
       .finally(() => setFeedLoading(false));
   }, []);
+
+  useEffect(() => { loadTab("민사법"); }, [loadTab]);
 
   useEffect(() => {
     if (step === "done" && generated && !postId && !autoSaveRef.current && caseData) {
@@ -1026,7 +1038,8 @@ ${renderSectionsHtml(post.content as string || "")}
                 setInput("");
                 setVoted(null);
                 setExistingPost(null);
-                setDisplayCount(10);
+                setFeedPage(1);
+                if (!tabsLoaded.has(tab)) loadTab(tab);
               }}
               className={`flex-1 py-2 text-[13px] rounded-lg transition-colors ${
                 activeTab === tab
@@ -1132,13 +1145,13 @@ ${renderSectionsHtml(post.content as string || "")}
                 <div className="flex items-center gap-2">
                   <div className="flex bg-zinc-100 p-0.5 rounded-lg flex-shrink-0">
                     <button
-                      onClick={() => { setFeedFilter("all"); setDisplayCount(10); }}
+                      onClick={() => { setFeedFilter("all"); setFeedPage(1); }}
                       className={`px-3 py-1 text-[12px] font-medium rounded-md transition-all ${feedFilter === "all" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
                     >
                       전체
                     </button>
                     <button
-                      onClick={() => { setFeedFilter("mine"); setDisplayCount(10); }}
+                      onClick={() => { setFeedFilter("mine"); setFeedPage(1); }}
                       className={`px-3 py-1 text-[12px] font-medium rounded-md transition-all ${feedFilter === "mine" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
                     >
                       내 문제
@@ -1150,7 +1163,7 @@ ${renderSectionsHtml(post.content as string || "")}
                     </svg>
                     <input
                       value={feedSearch}
-                      onChange={e => { setFeedSearch(e.target.value); setDisplayCount(10); }}
+                      onChange={e => { setFeedSearch(e.target.value); setFeedPage(1); }}
                       placeholder="사건번호 또는 사건명 검색…"
                       className="w-full h-8 bg-white border border-zinc-200 rounded-lg pl-8 pr-3 text-[13px] text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
                     />
@@ -1164,7 +1177,7 @@ ${renderSectionsHtml(post.content as string || "")}
                     return (
                       <button
                         key={s}
-                        onClick={() => { setFeedSort(s); setDisplayCount(10); }}
+                        onClick={() => { setFeedSort(s); setFeedPage(1); }}
                         className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors border ${
                           feedSort === s
                             ? "bg-zinc-800 text-white border-zinc-800"
@@ -1180,6 +1193,7 @@ ${renderSectionsHtml(post.content as string || "")}
 
               {/* 목록 */}
               {(() => {
+                const PAGE_SIZE = 20;
                 const byTab = feedPosts.filter(p =>
                   (p.lawArea ?? classifyLawArea(p.caseNumber)) === activeTab
                 );
@@ -1196,9 +1210,14 @@ ${renderSectionsHtml(post.content as string || "")}
                 const filtered = [...searched].sort((a, b) => {
                   if (feedSort === "likes") return (b.likes ?? 0) - (a.likes ?? 0);
                   if (feedSort === "date") return (b.date ?? "").localeCompare(a.date ?? "");
-                  return 0; // "recent" — Firestore createdAt desc 순서 유지
+                  // "recent" — createdAt 내림차순, createdAt 없는 포스트는 최상단
+                  const aTime = a.createdAt?.toMillis?.() ?? Number.MAX_SAFE_INTEGER;
+                  const bTime = b.createdAt?.toMillis?.() ?? Number.MAX_SAFE_INTEGER;
+                  return bTime - aTime;
                 });
-                const visible = filtered.slice(0, displayCount);
+                const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+                const currentPage = Math.min(feedPage, totalPages);
+                const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
                 if (feedLoading) return (
                   <div className="space-y-2">
@@ -1313,13 +1332,50 @@ ${renderSectionsHtml(post.content as string || "")}
                         </div>
                       ))}
                     </div>
-                    {filtered.length > displayCount && (
-                      <button
-                        onClick={() => setDisplayCount(c => c + 10)}
-                        className="w-full mt-3 h-9 text-[13px] text-zinc-400 hover:text-zinc-700 border border-zinc-200 hover:border-zinc-300 rounded-xl transition-colors"
-                      >
-                        더 보기 ({filtered.length - displayCount}개 남음)
-                      </button>
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-center gap-1 mt-4">
+                        <button
+                          disabled={currentPage === 1}
+                          onClick={() => setFeedPage(p => p - 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-[13px] text-zinc-400 hover:text-zinc-700 disabled:opacity-30 transition-colors"
+                        >
+                          ‹
+                        </button>
+                        {(() => {
+                          const pages: (number | "...")[] = [];
+                          if (totalPages <= 7) {
+                            for (let i = 1; i <= totalPages; i++) pages.push(i);
+                          } else {
+                            pages.push(1);
+                            if (currentPage > 3) pages.push("...");
+                            for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pages.push(i);
+                            if (currentPage < totalPages - 2) pages.push("...");
+                            pages.push(totalPages);
+                          }
+                          return pages.map((p, i) =>
+                            p === "..." ? (
+                              <span key={`e${i}`} className="w-7 h-7 flex items-center justify-center text-[12px] text-zinc-300">…</span>
+                            ) : (
+                              <button
+                                key={p}
+                                onClick={() => setFeedPage(p as number)}
+                                className={`w-7 h-7 flex items-center justify-center rounded-lg text-[12px] font-medium transition-colors ${
+                                  currentPage === p ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-700"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            )
+                          );
+                        })()}
+                        <button
+                          disabled={currentPage === totalPages}
+                          onClick={() => setFeedPage(p => p + 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-[13px] text-zinc-400 hover:text-zinc-700 disabled:opacity-30 transition-colors"
+                        >
+                          ›
+                        </button>
+                      </div>
                     )}
                   </>
                 );
