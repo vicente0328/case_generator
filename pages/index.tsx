@@ -9,6 +9,7 @@ import AdminBatchGenerator, { type AppendPayload } from "@/components/AdminBatch
 import AdminImportantCases from "@/components/AdminImportantCases";
 import AdminPromptEditor from "@/components/AdminPromptEditor";
 import AuthModal from "@/components/AuthModal";
+import RulingPreviewModal from "@/components/RulingPreviewModal";
 
 const ADMIN_EMAIL = "admin@casegenerator.com";
 
@@ -561,6 +562,8 @@ export default function Home() {
   const [modelUsed, setModelUsed] = useState<string | null>(null);
   const [generationCost, setGenerationCost] = useState<{ inputTokens: number; outputTokens: number; costUsd: number } | null>(null);
   const [guestModeEnabled, setGuestModeEnabled] = useState(true);
+  const [rulingPreviewPost, setRulingPreviewPost] = useState<PostPreview | null>(null);
+  const [showRulingPreview, setShowRulingPreview] = useState(false);
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
@@ -602,6 +605,22 @@ export default function Home() {
     const almostDoneTimer = setTimeout(() => setShowAlmostDone(true), 24000);
     const encouragementTimer = setTimeout(() => setShowEncouragement(true), 29000);
     return () => { timers.forEach(clearTimeout); clearTimeout(almostDoneTimer); clearTimeout(encouragementTimer); };
+  }, [step]);
+
+  // 생성 대기 중 판결요지 미리보기 모달 — 같은 탭의 기존 문제 중 랜덤 선택
+  useEffect(() => {
+    if (step !== "generating") return;
+    const candidates = feedPosts.filter(p => {
+      const area = p.lawArea ?? classifyLawArea(p.caseNumber);
+      return area === activeTab && p.caseNumber !== caseData?.caseNumber;
+    });
+    if (candidates.length === 0) return;
+    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    const timer = setTimeout(() => {
+      setRulingPreviewPost(chosen);
+      setShowRulingPreview(true);
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [step]);
 
   useEffect(() => {
@@ -1005,6 +1024,7 @@ ${renderSectionsHtml(post.content as string || "")}
     setStep("input"); setCaseData(null); setGenerated(""); setError("");
     setPostId(null); setInput(""); setVoted(null); setExistingPost(null);
     setShowManualInput(false); setManualText(""); setModelUsed(null); setGenerationCost(null);
+    setShowRulingPreview(false);
   };
 
   return (
@@ -1670,6 +1690,17 @@ ${renderSectionsHtml(post.content as string || "")}
     </Layout>
 
     {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+    {showRulingPreview && rulingPreviewPost && (
+      <RulingPreviewModal
+        postId={rulingPreviewPost.id}
+        caseName={rulingPreviewPost.caseName}
+        caseNumber={rulingPreviewPost.caseNumber}
+        court={rulingPreviewPost.court}
+        date={rulingPreviewPost.date}
+        generationComplete={step === "done"}
+        onClose={() => setShowRulingPreview(false)}
+      />
+    )}
     </>
   );
 }
