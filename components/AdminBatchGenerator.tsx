@@ -2,14 +2,7 @@ import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import type { User } from "firebase/auth";
-
-type LawArea = "민사법" | "공법" | "형사법";
-
-function classifyLawArea(caseNumber: string): LawArea {
-  if (/도\d/.test(caseNumber)) return "형사법";
-  if (/두\d/.test(caseNumber) || /헌/.test(caseNumber)) return "공법";
-  return "민사법";
-}
+import { type LawArea, classifyLawArea } from "@/lib/classifyLawArea";
 
 interface BatchItem {
   caseNumber: string;

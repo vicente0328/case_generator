@@ -10,6 +10,7 @@ import AdminImportantCases from "@/components/AdminImportantCases";
 import AdminPromptEditor from "@/components/AdminPromptEditor";
 import AuthModal from "@/components/AuthModal";
 import RulingPreviewModal from "@/components/RulingPreviewModal";
+import { type LawArea, classifyLawArea } from "@/lib/classifyLawArea";
 
 const ADMIN_EMAIL = "admin@casegenerator.com";
 
@@ -56,15 +57,6 @@ interface Section {
   body: string;
 }
 
-type LawArea = "민사법" | "공법" | "형사법";
-
-// 사건번호 패턴으로 법역 자동 분류
-// 도 → 형사법, 두/헌 → 공법, 그 외(다 등) → 민사법
-function classifyLawArea(caseNumber: string): LawArea {
-  if (/도\d/.test(caseNumber)) return "형사법";
-  if (/두\d/.test(caseNumber) || /헌/.test(caseNumber)) return "공법";
-  return "민사법";
-}
 
 const SUGGESTED: Record<LawArea, string[]> = {
   민사법: ["2016다271226", "2019다272855", "2021다264253"],

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { auth } from "@/lib/firebase";
 import type { FetchResult, FetchedCase } from "@/pages/api/admin/fetch-important-cases";
 
-type LawArea = "민사법" | "공법" | "형사법";
+import type { LawArea } from "@/lib/classifyLawArea";
 
 interface Props {
   onAppendCases: (caseNumbers: string[]) => void;

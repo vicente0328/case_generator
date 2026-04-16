@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { auth } from "@/lib/firebase";
 
-type LawArea = "민사법" | "공법" | "형사법";
+import type { LawArea } from "@/lib/classifyLawArea";
 
 const AREA_KEYS: Record<LawArea, "civil" | "public" | "criminal"> = {
   민사법: "civil",

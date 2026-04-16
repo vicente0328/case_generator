@@ -1,13 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { admin } from "@/lib/firebaseAdmin";
-
-type LawArea = "민사법" | "공법" | "형사법";
-
-function classifyLawArea(caseNumber: string): LawArea {
-  if (/도\d/.test(caseNumber)) return "형사법";
-  if (/두\d/.test(caseNumber) || /헌/.test(caseNumber)) return "공법";
-  return "민사법";
-}
+import { type LawArea, classifyLawArea } from "@/lib/classifyLawArea";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end();

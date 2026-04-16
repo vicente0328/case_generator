@@ -21,7 +21,7 @@ async function fetchFirestorePrompts() {
   return _promptCache;
 }
 
-type LawArea = "민사법" | "공법" | "형사법";
+import type { LawArea } from "@/lib/classifyLawArea";
 
 
 // 기본값 반환 (Firestore 미설정 시 폴백용)
