@@ -10,6 +10,7 @@ interface RulingPreviewModalProps {
   date: string;
   generationComplete: boolean;
   onClose: () => void;
+  onEmpty?: () => void;
 }
 
 function formatDate(d: string): string {
@@ -19,21 +20,38 @@ function formatDate(d: string): string {
 }
 
 export default function RulingPreviewModal({
-  postId, caseName, caseNumber, court, date, generationComplete, onClose,
+  postId, caseName, caseNumber, court, date, generationComplete, onClose, onEmpty,
 }: RulingPreviewModalProps) {
-  const [rulingRatio, setRulingRatio] = useState<string | null>(null);
+  const [previewText, setPreviewText] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<"ruling" | "analysis">("ruling");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getDoc(doc(db, "posts", postId))
       .then(snap => {
-        if (snap.exists()) {
-          setRulingRatio(snap.data().rulingRatio || "");
+        if (!snap.exists()) { onEmpty?.(); return; }
+        const data = snap.data();
+        const ratio = (data.rulingRatio || "").trim();
+        if (ratio) {
+          setPreviewText(ratio);
+          setPreviewType("ruling");
+        } else {
+          // 판결요지가 없으면 content에서 해설/법리 부분 추출
+          const content = (data.content || "") as string;
+          const match = content.match(/\[해설(?:\s*및\s*모범답안)?\]([\s\S]*?)(?:\[모델\s*판례|$)/);
+          if (match) {
+            const extracted = match[1].trim().slice(0, 2000);
+            setPreviewText(extracted);
+            setPreviewType("analysis");
+          } else {
+            // 판결요지도 해설도 없으면 빈 콘텐츠 콜백
+            onEmpty?.();
+          }
         }
       })
       .catch(() => onClose())
       .finally(() => setLoading(false));
-  }, [postId, onClose]);
+  }, [postId, onClose, onEmpty]);
 
   return (
     <div
@@ -48,9 +66,14 @@ export default function RulingPreviewModal({
       >
         {/* 헤더 */}
         <div className="px-6 pt-6 pb-4 border-b border-zinc-100 flex-shrink-0">
+          <p className="text-[12px] text-zinc-400 mb-3 leading-relaxed">
+            기다리시는 동안 다른 사건의 {previewType === "ruling" ? "판결요지" : "해설"}을 읽어보시는 건 어떨까요?
+          </p>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">판결요지 미리보기</span>
+              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">
+                {previewType === "ruling" ? "판결요지 미리보기" : "해설 미리보기"}
+              </span>
             </div>
             <button
               onClick={onClose}
@@ -77,10 +100,10 @@ export default function RulingPreviewModal({
               <div className="h-3.5 bg-zinc-100 rounded-full w-full" />
               <div className="h-3.5 bg-zinc-100 rounded-full w-[72%]" />
             </div>
-          ) : rulingRatio ? (
-            <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{rulingRatio}</p>
+          ) : previewText ? (
+            <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{previewText}</p>
           ) : (
-            <p className="text-[13px] text-zinc-300 italic">판결요지 정보가 없습니다.</p>
+            <p className="text-[13px] text-zinc-300 italic">미리보기 정보가 없습니다.</p>
           )}
         </div>
 

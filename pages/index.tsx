@@ -608,14 +608,20 @@ export default function Home() {
   }, [step]);
 
   // 생성 대기 중 판결요지 미리보기 모달 — 같은 탭의 기존 문제 중 랜덤 선택
-  useEffect(() => {
-    if (step !== "generating") return;
+  const triedPreviewIds = useRef<Set<string>>(new Set());
+  const pickPreviewPost = useCallback(() => {
     const candidates = feedPosts.filter(p => {
       const area = p.lawArea ?? classifyLawArea(p.caseNumber);
-      return area === activeTab && p.caseNumber !== caseData?.caseNumber;
+      return area === activeTab && p.caseNumber !== caseData?.caseNumber && !triedPreviewIds.current.has(p.id);
     });
-    if (candidates.length === 0) return;
-    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    if (candidates.length === 0) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }, [feedPosts, activeTab, caseData]);
+
+  useEffect(() => {
+    if (step !== "generating") { triedPreviewIds.current.clear(); return; }
+    const chosen = pickPreviewPost();
+    if (!chosen) return;
     const timer = setTimeout(() => {
       setRulingPreviewPost(chosen);
       setShowRulingPreview(true);
@@ -1713,6 +1719,15 @@ ${renderSectionsHtml(post.content as string || "")}
         date={rulingPreviewPost.date}
         generationComplete={step === "done"}
         onClose={() => setShowRulingPreview(false)}
+        onEmpty={() => {
+          triedPreviewIds.current.add(rulingPreviewPost.id);
+          const next = pickPreviewPost();
+          if (next) {
+            setRulingPreviewPost(next);
+          } else {
+            setShowRulingPreview(false);
+          }
+        }}
       />
     )}
     </>
