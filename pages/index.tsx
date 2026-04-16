@@ -750,8 +750,15 @@ export default function Home() {
       if (!res.ok) throw new Error(data.error || "판례 조회 실패");
       setCaseData(data); setStep("preview");
 
+      // 사건번호 기반 법역 자동 감지 — 탭과 다르면 자동 전환
+      const detectedArea = classifyLawArea(data.caseNumber);
+      if (detectedArea !== activeTab) {
+        setActiveTab(detectedArea);
+        if (!tabsLoaded.has(detectedArea)) loadTab(detectedArea);
+      }
+
       // 프리페치를 즉시 시작 — 로그인한 경우에만 (Firestore 조회 완료를 기다리지 않음)
-      if (user) runPrefetch(data);
+      if (user) runPrefetch(data, detectedArea);
 
       // 기존 문제 조회 (병렬) — orderBy 없이 where만 사용해 복합 인덱스 불필요
       getDocs(query(
@@ -792,8 +799,9 @@ export default function Home() {
     const date = dateMatch
       ? `${dateMatch[1]}${dateMatch[2].padStart(2, "0")}${dateMatch[3].padStart(2, "0")}`
       : "";
+    const manualCaseNumber = caseNoMatch?.[1] || input.trim();
     setCaseData({
-      caseNumber: caseNoMatch?.[1] || input.trim(),
+      caseNumber: manualCaseNumber,
       caseName: caseNameMatch?.[1] || "",
       court: courtMatch?.[1] || "",
       date,
@@ -801,6 +809,12 @@ export default function Home() {
       rulingRatio: "",
       fullText: text,
     });
+    // 사건번호 기반 법역 자동 감지 — 탭과 다르면 자동 전환
+    const detectedArea = classifyLawArea(manualCaseNumber);
+    if (detectedArea !== activeTab) {
+      setActiveTab(detectedArea);
+      if (!tabsLoaded.has(detectedArea)) loadTab(detectedArea);
+    }
     setShowManualInput(false);
     setManualText("");
     setError("");
@@ -850,7 +864,7 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseData, lawArea: activeTab }),
+        body: JSON.stringify({ caseData, lawArea: classifyLawArea(caseData.caseNumber) }),
       });
       if (!res.body) throw new Error("스트림을 받을 수 없습니다.");
 
