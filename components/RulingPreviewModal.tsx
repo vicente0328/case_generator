@@ -64,27 +64,27 @@ export default function RulingPreviewModal({
         onClick={e => e.stopPropagation()}
         style={{ animation: "modalIn 0.2s cubic-bezier(0.16,1,0.3,1)", maxHeight: "80vh" }}
       >
-        {/* 헤더 */}
-        <div className="px-6 pt-6 pb-4 border-b border-zinc-100 flex-shrink-0">
-          <p className="text-[12px] text-zinc-400 mb-3 leading-relaxed">
+        {/* 안내 문구 */}
+        <div className="px-6 py-3.5 bg-blue-50 border-b border-blue-100 flex items-center justify-between flex-shrink-0">
+          <p className="text-[13px] text-blue-700 leading-relaxed">
             기다리시는 동안 다른 사건의 {previewType === "ruling" ? "판결요지" : "해설"}을 읽어보시는 건 어떨까요?
           </p>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">
-                {previewType === "ruling" ? "판결요지 미리보기" : "해설 미리보기"}
-              </span>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-zinc-400 hover:text-zinc-600 transition-colors p-1 -mr-1"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <p className="text-[15px] font-bold text-zinc-900 tracking-tight font-mono">{caseNumber}</p>
+          <button
+            onClick={onClose}
+            className="text-blue-400 hover:text-blue-600 transition-colors p-1 -ml-2 flex-shrink-0"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* 헤더 */}
+        <div className="px-6 pt-5 pb-4 border-b border-zinc-100 flex-shrink-0">
+          <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">
+            {previewType === "ruling" ? "판결요지 미리보기" : "해설 미리보기"}
+          </span>
+          <p className="text-[15px] font-bold text-zinc-900 tracking-tight font-mono mt-2.5">{caseNumber}</p>
           <p className="text-[12px] text-zinc-400 mt-1">
             {[court, date && formatDate(date), caseName].filter(Boolean).join(" · ")}
           </p>
