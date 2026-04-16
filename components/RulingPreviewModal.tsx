@@ -1,16 +1,12 @@
-import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-
 interface RulingPreviewModalProps {
-  postId: string;
   caseName: string;
   caseNumber: string;
   court: string;
   date: string;
+  rulingRatio?: string;
+  content?: string;
   generationComplete: boolean;
   onClose: () => void;
-  onEmpty?: () => void;
 }
 
 function formatDate(d: string): string {
@@ -20,38 +16,22 @@ function formatDate(d: string): string {
 }
 
 export default function RulingPreviewModal({
-  postId, caseName, caseNumber, court, date, generationComplete, onClose, onEmpty,
+  caseName, caseNumber, court, date, rulingRatio, content, generationComplete, onClose,
 }: RulingPreviewModalProps) {
-  const [previewText, setPreviewText] = useState<string | null>(null);
-  const [previewType, setPreviewType] = useState<"ruling" | "analysis">("ruling");
-  const [loading, setLoading] = useState(true);
+  const ratio = (rulingRatio || "").trim();
+  let previewText = "";
+  let previewType: "ruling" | "analysis" = "ruling";
 
-  useEffect(() => {
-    getDoc(doc(db, "posts", postId))
-      .then(snap => {
-        if (!snap.exists()) { onEmpty?.(); return; }
-        const data = snap.data();
-        const ratio = (data.rulingRatio || "").trim();
-        if (ratio) {
-          setPreviewText(ratio);
-          setPreviewType("ruling");
-        } else {
-          // 판결요지가 없으면 content에서 해설/법리 부분 추출
-          const content = (data.content || "") as string;
-          const match = content.match(/\[해설(?:\s*및\s*모범답안)?\]([\s\S]*?)(?:\[모델\s*판례|$)/);
-          if (match) {
-            const extracted = match[1].trim().slice(0, 2000);
-            setPreviewText(extracted);
-            setPreviewType("analysis");
-          } else {
-            // 판결요지도 해설도 없으면 빈 콘텐츠 콜백
-            onEmpty?.();
-          }
-        }
-      })
-      .catch(() => onClose())
-      .finally(() => setLoading(false));
-  }, [postId, onClose, onEmpty]);
+  if (ratio) {
+    previewText = ratio;
+  } else {
+    // 판결요지가 없으면 content에서 해설/법리 부분 추출
+    const match = (content || "").match(/\[해설(?:\s*및\s*모범답안)?\]([\s\S]*?)(?:\[모델\s*판례|$)/);
+    if (match) {
+      previewText = match[1].trim().slice(0, 2000);
+      previewType = "analysis";
+    }
+  }
 
   return (
     <div
@@ -92,15 +72,7 @@ export default function RulingPreviewModal({
 
         {/* 본문 */}
         <div className="px-6 py-5 overflow-y-auto flex-1" style={{ maxHeight: "60vh" }}>
-          {loading ? (
-            <div className="space-y-2.5 animate-pulse">
-              <div className="h-3.5 bg-zinc-100 rounded-full w-full" />
-              <div className="h-3.5 bg-zinc-100 rounded-full w-[95%]" />
-              <div className="h-3.5 bg-zinc-100 rounded-full w-[88%]" />
-              <div className="h-3.5 bg-zinc-100 rounded-full w-full" />
-              <div className="h-3.5 bg-zinc-100 rounded-full w-[72%]" />
-            </div>
-          ) : previewText ? (
+          {previewText ? (
             <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{previewText}</p>
           ) : (
             <p className="text-[13px] text-zinc-300 italic">미리보기 정보가 없습니다.</p>

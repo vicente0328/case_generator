@@ -46,6 +46,8 @@ interface PostPreview {
   lawArea?: LawArea;
   model?: string;
   createdAt?: { toMillis?: () => number };
+  rulingRatio?: string;
+  content?: string;
 }
 
 interface Section {
@@ -608,20 +610,15 @@ export default function Home() {
   }, [step]);
 
   // 생성 대기 중 판결요지 미리보기 모달 — 같은 탭의 기존 문제 중 랜덤 선택
-  const triedPreviewIds = useRef<Set<string>>(new Set());
-  const pickPreviewPost = useCallback(() => {
+  useEffect(() => {
+    if (step !== "generating") return;
     const candidates = feedPosts.filter(p => {
       const area = p.lawArea ?? classifyLawArea(p.caseNumber);
-      return area === activeTab && p.caseNumber !== caseData?.caseNumber && !triedPreviewIds.current.has(p.id);
+      const hasContent = !!(p.rulingRatio?.trim() || p.content?.trim());
+      return area === activeTab && p.caseNumber !== caseData?.caseNumber && hasContent;
     });
-    if (candidates.length === 0) return null;
-    return candidates[Math.floor(Math.random() * candidates.length)];
-  }, [feedPosts, activeTab, caseData]);
-
-  useEffect(() => {
-    if (step !== "generating") { triedPreviewIds.current.clear(); return; }
-    const chosen = pickPreviewPost();
-    if (!chosen) return;
+    if (candidates.length === 0) return;
+    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
     const timer = setTimeout(() => {
       setRulingPreviewPost(chosen);
       setShowRulingPreview(true);
@@ -690,6 +687,8 @@ export default function Home() {
           likes: 0,
           needsReview: 0,
           model: modelUsed || undefined,
+          rulingRatio: caseData.rulingRatio || "",
+          content: generated,
         }, ...prev]);
       }).catch(console.error);
     }
@@ -1712,22 +1711,14 @@ ${renderSectionsHtml(post.content as string || "")}
     {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
     {showRulingPreview && rulingPreviewPost && (
       <RulingPreviewModal
-        postId={rulingPreviewPost.id}
         caseName={rulingPreviewPost.caseName}
         caseNumber={rulingPreviewPost.caseNumber}
         court={rulingPreviewPost.court}
         date={rulingPreviewPost.date}
+        rulingRatio={rulingPreviewPost.rulingRatio}
+        content={rulingPreviewPost.content}
         generationComplete={step === "done"}
         onClose={() => setShowRulingPreview(false)}
-        onEmpty={() => {
-          triedPreviewIds.current.add(rulingPreviewPost.id);
-          const next = pickPreviewPost();
-          if (next) {
-            setRulingPreviewPost(next);
-          } else {
-            setShowRulingPreview(false);
-          }
-        }}
       />
     )}
     </>
