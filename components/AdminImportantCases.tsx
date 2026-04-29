@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { auth } from "@/lib/firebase";
 import type { FetchResult, FetchedCase } from "@/pages/api/admin/fetch-important-cases";
 
@@ -7,13 +7,6 @@ import type { LawArea } from "@/lib/classifyLawArea";
 interface Props {
   onAppendCases: (caseNumbers: string[]) => void;
 }
-
-// ── 소스 뱃지 라벨 ─────────────────────────────────────────────────────────────
-const SOURCE_LABEL: Record<string, { label: string; color: string }> = {
-  법제처:  { label: "법제처", color: "bg-emerald-100 text-emerald-600" },
-  웹검색:  { label: "웹검색", color: "bg-sky-100 text-sky-600" },
-  AI추천:  { label: "AI추천", color: "bg-amber-100 text-amber-700" },
-};
 
 // ── 법역별 스타일 ─────────────────────────────────────────────────────────────
 const AREA_STYLE: Record<LawArea, { badge: string; header: string; border: string }> = {
@@ -71,16 +64,11 @@ function CaseRow({
         {c.caseName && (
           <p className="text-[11px] text-zinc-500 truncate mt-0.5">{c.caseName}</p>
         )}
-        <div className="flex items-center gap-1 mt-1 flex-wrap">
-          {c.sources.map((s) => {
-            const style = SOURCE_LABEL[s] ?? { label: s, color: "bg-zinc-100 text-zinc-400" };
-            return (
-              <span key={s} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${style.color}`}>
-                {style.label}
-              </span>
-            );
-          })}
-        </div>
+        {(c.rulingPointsCount !== undefined || c.rulingPointsLength !== undefined) && (
+          <p className="text-[10px] text-zinc-400 mt-0.5">
+            판시사항 {c.rulingPointsCount ?? 0}개 · {c.rulingPointsLength ?? 0}자
+          </p>
+        )}
       </div>
     </label>
   );
@@ -159,9 +147,12 @@ function StatBadge({ label, count, color }: { label: string; count: number; colo
 export default function AdminImportantCases({ onAppendCases }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [activating, setActivating] = useState(false);
   const [result, setResult] = useState<FetchResult | null>(null);
   const [fetchError, setFetchError] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [lastAddedCount, setLastAddedCount] = useState<number | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const AREAS: LawArea[] = ["민사법", "공법", "형사법"];
 
@@ -170,12 +161,10 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
     : [];
   const totalCount = allCases.length;
 
-  // ── 데이터 가져오기 ─────────────────────────────────────────────────────────
-  const handleFetch = async () => {
+  // ── DB에서 출제 유력 판례 목록 로드 (GET) ──────────────────────────────────
+  const loadList = async () => {
     setLoading(true);
     setFetchError("");
-    setResult(null);
-    setSelected(new Set());
     try {
       const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/admin/fetch-important-cases", {
@@ -184,10 +173,42 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
       const data = await res.json() as FetchResult & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "서버 오류");
       setResult(data);
+      setHasLoaded(true);
     } catch (e) {
       setFetchError(e instanceof Error ? e.message : "오류가 발생했습니다.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 패널을 열 때 목록 자동 로드 (한 번만)
+  useEffect(() => {
+    if (open && !hasLoaded) {
+      void loadList();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // ── Activate: 법제처 검색 + 신규 사건 DB 추가 (POST) ─────────────────────
+  const handleActivate = async () => {
+    setActivating(true);
+    setFetchError("");
+    setLastAddedCount(null);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/admin/fetch-important-cases", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token ?? ""}` },
+      });
+      const data = await res.json() as FetchResult & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "서버 오류");
+      setResult(data);
+      setHasLoaded(true);
+      setLastAddedCount(data.stats.addedThisRun ?? 0);
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : "오류가 발생했습니다.");
+    } finally {
+      setActivating(false);
     }
   };
 
@@ -235,8 +256,8 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
           <svg className="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
-          <span className="text-[12px] font-semibold text-zinc-400">최신 중요 판례 가져오기</span>
-          <span className="text-[11px] text-zinc-300">판례평석 · 공보판례 분석</span>
+          <span className="text-[12px] font-semibold text-zinc-400">출제가능성 높은 최신 판례</span>
+          <span className="text-[11px] text-zinc-300">post-2020 대법원 · 판시사항 2개+ 또는 200자+</span>
         </div>
         <svg
           className={`w-3.5 h-3.5 text-zinc-300 transition-transform ${open ? "rotate-180" : ""}`}
@@ -248,24 +269,36 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
 
       {open && (
         <div className="border-t border-zinc-100">
-          {/* 설명 + 가져오기 버튼 */}
+          {/* 설명 + Activate 버튼 */}
           <div className="px-4 py-3 flex items-start justify-between gap-3">
             <p className="text-[11px] text-zinc-400 leading-relaxed">
-              법제처 공보판례 실시간 검색 · Gemini Google 웹검색 · Gemini 지식 기반 추천을 병렬 조회한 후,
-              Gemini가 변시 적합성을 평가하여 민사법 / 공법 / 형사법으로 분류합니다.
-              <span className="text-amber-600 font-medium">AI추천</span> 판례는 법제처 API로 실존 검증 후 포함됩니다.
+              법제처 API에서 post-2020 대법원·헌재 판례를 수집한 후,
+              <span className="font-medium text-zinc-600"> 판시사항이 2개 이상이거나 200자 이상</span>인 사건을 선별하여
+              <span className="font-medium text-zinc-600"> 출제 유력 판례 목록</span>에 누적 추가합니다.
+              특별법(자본시장·조세·특허·노동) 사건은 제외됩니다.
             </p>
             <button
-              onClick={handleFetch}
-              disabled={loading}
+              onClick={handleActivate}
+              disabled={activating || loading}
               className="flex-shrink-0 h-8 px-4 bg-blue-900 text-white rounded-lg text-[12px] font-semibold hover:bg-blue-800 transition-colors disabled:opacity-40 flex items-center gap-2"
             >
-              {loading && (
+              {activating && (
                 <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               )}
-              {loading ? "분석 중…" : "가져오기"}
+              {activating ? "수집 중…" : "Activate"}
             </button>
           </div>
+
+          {/* Activate 결과 알림 */}
+          {lastAddedCount !== null && !activating && (
+            <div className="mx-4 mb-3 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
+              <p className="text-[12px] text-blue-700">
+                {lastAddedCount > 0
+                  ? <>이번 실행에 <span className="font-semibold">{lastAddedCount}건</span>의 신규 판례가 목록에 추가되었습니다.</>
+                  : "신규 판례가 없습니다 (모두 기존 목록에 포함됨)."}
+              </p>
+            </div>
+          )}
 
           {/* 에러 표시 */}
           {fetchError && (
@@ -274,19 +307,28 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
             </div>
           )}
 
+          {/* 로딩 표시 */}
+          {loading && !result && (
+            <div className="px-4 pb-3">
+              <p className="text-[11px] text-zinc-400">목록 불러오는 중…</p>
+            </div>
+          )}
+
           {/* 결과 영역 */}
           {result && (
             <>
-              {/* 소스별 통계 */}
+              {/* 통계 */}
               <div className="px-4 pb-3 flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <StatBadge label="법제처" count={result.stats.lawGoKr} color="bg-emerald-400" />
-                  <StatBadge label="웹검색" count={result.stats.journal} color="bg-sky-400" />
-                  <StatBadge label="AI추천" count={result.stats.aiSuggested} color="bg-amber-400" />
-                  <span className="text-zinc-200 text-[11px]">→</span>
-                  <span className="text-[11px] font-semibold text-zinc-700">
-                    변시 적합 <span className="text-blue-700">{totalCount}건</span>
-                  </span>
+                  <StatBadge label="목록 누적" count={result.stats.totalInList ?? totalCount} color="bg-blue-400" />
+                  {result.stats.totalRaw > 0 && (
+                    <>
+                      <span className="text-zinc-200 text-[11px]">·</span>
+                      <span className="text-[11px] text-zinc-400">
+                        이번 수집 {result.stats.totalRaw}건 / 통과 {result.stats.totalFiltered}건
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={selectAll} className="text-[11px] text-blue-500 hover:text-blue-700 transition-colors">
