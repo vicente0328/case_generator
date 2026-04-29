@@ -139,10 +139,14 @@ function parseSearchItems(data: Record<string, unknown>): { items: SearchItem[];
   return { items, authFailed: false };
 }
 
-async function collectRecentCases(oc: string): Promise<{ items: SearchItem[]; error?: string }> {
+async function collectRecentCases(oc: string): Promise<{ items: SearchItem[]; error?: string; debug: string[] }> {
   const queries = ["선고", "결정", "헌법재판소"];
   const allMap = new Map<string, SearchItem>();
+  const debug: string[] = [];
   let authFailed = false;
+  let httpFailed = 0;
+  let parseSuccess = 0;
+  let totalRawItems = 0;
 
   for (const q of queries) {
     if (authFailed) break;
@@ -152,17 +156,44 @@ async function collectRecentCases(oc: string): Promise<{ items: SearchItem[]; er
         `?OC=${encodeURIComponent(oc)}&target=prec&type=JSON` +
         `&query=${encodeURIComponent(q)}&display=100&sort=date&page=${page}`;
       const data = await fetchLawGoKrUrl(url);
-      if (!data) continue;
+      if (!data) {
+        httpFailed++;
+        debug.push(`HTTP fail: q="${q}" page=${page}`);
+        continue;
+      }
       const { items, authFailed: af } = parseSearchItems(data);
-      if (af) { authFailed = true; break; }
-      if (items.length === 0) break;
+      if (af) {
+        authFailed = true;
+        // 응답 샘플 첨부 (인증 실패 메시지 진단용)
+        debug.push(`Auth fail body: ${JSON.stringify(data).slice(0, 300)}`);
+        break;
+      }
+      parseSuccess++;
+      totalRawItems += items.length;
+      if (items.length === 0) {
+        // 첫 페이지에서 빈 결과면 응답 형태 저장
+        if (page === 1) {
+          debug.push(`Empty response q="${q}": ${JSON.stringify(data).slice(0, 300)}`);
+        }
+        break;
+      }
       for (const it of items) {
         if (!allMap.has(it.caseNumber)) allMap.set(it.caseNumber, it);
       }
     }
   }
 
-  if (authFailed) return { items: [], error: "법제처 OC 인증 실패 (LAW_OC 환경변수 확인 필요)" };
+  if (authFailed) return { items: [], error: "법제처 OC 인증 실패 (LAW_OC 환경변수 확인 필요)", debug };
+
+  if (parseSuccess === 0) {
+    return { items: [], error: `법제처 API 호출 ${httpFailed}회 모두 실패 (네트워크 또는 서버 오류)`, debug };
+  }
+
+  if (totalRawItems === 0) {
+    return { items: [], error: `법제처 API 응답이 모두 빈 결과 — 응답 본문: ${debug[0] || "(없음)"}`, debug };
+  }
+
+  debug.push(`수집 raw=${totalRawItems}, 중복제거 후=${allMap.size}`);
 
   const filtered = [...allMap.values()].filter((it) => {
     const yearMatch = it.caseNumber.match(/^(\d{4})/);
@@ -172,7 +203,15 @@ async function collectRecentCases(oc: string): Promise<{ items: SearchItem[]; er
     return it.court.includes("대법원") || it.court.includes("헌법재판소");
   });
 
-  return { items: filtered };
+  debug.push(`post-2020 대법원/헌재 필터 후=${filtered.length}`);
+
+  if (filtered.length === 0) {
+    // 샘플 사건번호 1개 반환 — 응답 형태 진단용
+    const sample = [...allMap.values()].slice(0, 3).map(it => `${it.caseNumber}|${it.court}`);
+    return { items: [], error: `필터 통과 0건 (수집 ${allMap.size}건 중). 샘플: ${sample.join(", ")}`, debug };
+  }
+
+  return { items: filtered, debug };
 }
 
 interface DetailResult {
@@ -341,10 +380,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const collected = await collectRecentCases(oc);
     if (collected.error) errors.push(`법제처: ${collected.error}`);
+    // 진단 로그 — UI 에러 영역에 노출
+    for (const d of collected.debug.slice(0, 5)) errors.push(`[debug] ${d}`);
     const totalRaw = collected.items.length;
 
     // 이미 DB에 있는 사건 사전 제외 → 상세 조회 비용 절감
     const novel = collected.items.filter((it) => !existing.has(it.caseNumber));
+    errors.push(`[debug] 신규 사건(기존 DB 제외 후)=${novel.length}, 기존 DB=${existing.size}`);
 
     const MAX_DETAIL = 200;
     const toFetch = novel.slice(0, MAX_DETAIL);
@@ -353,11 +395,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const details = await fetchAllDetails(oc, toFetch);
+    errors.push(`[debug] 상세 조회 성공=${details.length}/${toFetch.length}`);
 
     const passed = details.filter((d) => {
       if (isSpecialLaw(d.caseName)) return false;
       return d.rulingPointsLength >= MIN_RULING_POINTS_LENGTH || d.rulingPointsCount >= MIN_RULING_POINTS_COUNT;
     });
+    errors.push(`[debug] 임계값 통과=${passed.length}/${details.length}`);
 
     const addedCount = await saveCases(passed);
 
