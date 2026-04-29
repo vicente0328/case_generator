@@ -99,10 +99,16 @@ interface SearchItem {
   serialNo: string;
 }
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://case-generator-eight.vercel.app";
+
 async function fetchLawGoKrUrl(url: string): Promise<Record<string, unknown> | null> {
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; CaseGenerator/1.0)" },
+      headers: {
+        Referer: `${SITE_URL}/`,
+        Origin: SITE_URL,
+        "User-Agent": "Mozilla/5.0 (compatible; CaseGenerator/1.0)",
+      },
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return null;
