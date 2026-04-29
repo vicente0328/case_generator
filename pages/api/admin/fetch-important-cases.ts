@@ -101,7 +101,7 @@ interface SearchItem {
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://case-generator-eight.vercel.app";
 
-async function fetchLawGoKrUrl(url: string): Promise<Record<string, unknown> | null> {
+async function fetchLawGoKrUrl(url: string, timeoutMs = 20000): Promise<{ data: Record<string, unknown> | null; error?: string }> {
   try {
     const res = await fetch(url, {
       headers: {
@@ -109,13 +109,18 @@ async function fetchLawGoKrUrl(url: string): Promise<Record<string, unknown> | n
         Origin: SITE_URL,
         "User-Agent": "Mozilla/5.0 (compatible; CaseGenerator/1.0)",
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { data: null, error: `HTTP ${res.status}` };
     const text = await res.text();
-    return JSON.parse(text.replace(/^﻿/, "").trim()) as Record<string, unknown>;
-  } catch {
-    return null;
+    try {
+      return { data: JSON.parse(text.replace(/^﻿/, "").trim()) as Record<string, unknown> };
+    } catch {
+      return { data: null, error: `JSON parse fail: ${text.slice(0, 100)}` };
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "fetch fail";
+    return { data: null, error: msg };
   }
 }
 
@@ -140,40 +145,46 @@ function parseSearchItems(data: Record<string, unknown>): { items: SearchItem[];
 }
 
 async function collectRecentCases(oc: string): Promise<{ items: SearchItem[]; error?: string; debug: string[] }> {
-  const queries = ["선고", "결정", "헌법재판소"];
+  // 전략 변경: 연도 직접 검색 + 작은 display 값으로 응답 시간 단축
+  // "2025", "2024" 등은 사건번호에 해당 연도가 포함된 판례를 매칭
+  // display=50 으로 응답 부담 감소, 페이지 더 늘려서 전체 양 유지
+  const currentYear = new Date().getFullYear();
+  const queries: string[] = [];
+  for (let y = currentYear; y >= MIN_YEAR; y--) queries.push(String(y));
+
   const allMap = new Map<string, SearchItem>();
   const debug: string[] = [];
   let authFailed = false;
   let httpFailed = 0;
   let parseSuccess = 0;
   let totalRawItems = 0;
+  let firstHttpError = "";
 
   for (const q of queries) {
     if (authFailed) break;
-    for (let page = 1; page <= 3; page++) {
+    for (let page = 1; page <= 4; page++) {
       const url =
         `https://www.law.go.kr/DRF/lawSearch.do` +
         `?OC=${encodeURIComponent(oc)}&target=prec&type=JSON` +
-        `&query=${encodeURIComponent(q)}&display=100&sort=date&page=${page}`;
-      const data = await fetchLawGoKrUrl(url);
+        `&query=${encodeURIComponent(q)}&display=50&sort=date&page=${page}`;
+      const { data, error: httpErr } = await fetchLawGoKrUrl(url);
       if (!data) {
         httpFailed++;
-        debug.push(`HTTP fail: q="${q}" page=${page}`);
+        if (!firstHttpError && httpErr) firstHttpError = httpErr;
+        debug.push(`HTTP fail q="${q}" p=${page}: ${httpErr || "?"}`);
         continue;
       }
       const { items, authFailed: af } = parseSearchItems(data);
       if (af) {
         authFailed = true;
-        // 응답 샘플 첨부 (인증 실패 메시지 진단용)
-        debug.push(`Auth fail body: ${JSON.stringify(data).slice(0, 300)}`);
+        debug.push(`Auth fail: ${JSON.stringify(data).slice(0, 200)}`);
         break;
       }
       parseSuccess++;
       totalRawItems += items.length;
       if (items.length === 0) {
-        // 첫 페이지에서 빈 결과면 응답 형태 저장
         if (page === 1) {
-          debug.push(`Empty response q="${q}": ${JSON.stringify(data).slice(0, 300)}`);
+          debug.push(`Empty q="${q}": ${JSON.stringify(data).slice(0, 200)}`);
         }
         break;
       }
@@ -186,7 +197,7 @@ async function collectRecentCases(oc: string): Promise<{ items: SearchItem[]; er
   if (authFailed) return { items: [], error: "법제처 OC 인증 실패 (LAW_OC 환경변수 확인 필요)", debug };
 
   if (parseSuccess === 0) {
-    return { items: [], error: `법제처 API 호출 ${httpFailed}회 모두 실패 (네트워크 또는 서버 오류)`, debug };
+    return { items: [], error: `법제처 API 호출 ${httpFailed}회 모두 실패: ${firstHttpError || "원인 불명"}`, debug };
   }
 
   if (totalRawItems === 0) {
@@ -225,7 +236,7 @@ interface DetailResult {
 
 async function fetchDetail(oc: string, item: SearchItem): Promise<DetailResult | null> {
   const url = `https://www.law.go.kr/DRF/lawService.do?OC=${encodeURIComponent(oc)}&target=prec&ID=${item.serialNo}&type=JSON`;
-  const data = await fetchLawGoKrUrl(url);
+  const { data } = await fetchLawGoKrUrl(url, 12000);
   if (!data) return null;
   const detail = (data["PrecService"] ?? data["precService"] ?? data) as Record<string, unknown>;
   if (!detail || typeof detail !== "object") return null;
