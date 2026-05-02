@@ -94,6 +94,11 @@ function CaseRow({
       />
       <button onClick={onClick} className="min-w-0 flex-1 text-left">
         <div className="flex items-center gap-1.5 flex-wrap">
+          {(c.score ?? 0) > 0 && (
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+              {c.score}
+            </span>
+          )}
           <span className="text-[12px] font-mono font-semibold text-zinc-800 leading-tight hover:underline">
             {c.caseNumber}
           </span>
@@ -104,6 +109,18 @@ function CaseRow({
           <p className="text-[10px] text-zinc-400 mt-0.5">
             판시사항 {c.rulingPointsCount ?? 0}개 · {c.rulingPointsLength ?? 0}자
           </p>
+        )}
+        {(c.matchedTopics?.length ?? 0) > 0 && (
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            {(c.matchedTopics || []).slice(0, 3).map((t) => (
+              <span key={t} className="text-[10px] text-zinc-600 bg-zinc-100 px-1 rounded">
+                {t}
+              </span>
+            ))}
+            {(c.matchedTopics?.length ?? 0) > 3 && (
+              <span className="text-[10px] text-zinc-400">+{(c.matchedTopics!.length) - 3}</span>
+            )}
+          </div>
         )}
       </button>
     </div>

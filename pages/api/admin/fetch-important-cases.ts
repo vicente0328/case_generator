@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { admin } from "@/lib/firebaseAdmin";
 import { classifyLawArea, type LawArea } from "@/lib/classifyLawArea";
+import { scoreCase } from "@/lib/barExamTopics";
 
 const ADMIN_EMAIL = "admin@casegenerator.com";
 
@@ -28,6 +29,8 @@ export interface FetchedCase {
   rulingPointsCount?: number;
   rulingPointsLength?: number;
   lawArea?: LawArea;
+  score?: number;
+  matchedTopics?: string[];
 }
 
 export interface FetchResult {
@@ -237,6 +240,8 @@ export interface DetailResult {
   rulingRatio: string;        // 판결요지 본문
   rulingPointsCount: number;
   rulingPointsLength: number;
+  score: number;
+  matchedTopics: string[];
 }
 
 async function fetchDetail(oc: string, item: SearchItem): Promise<DetailResult | null> {
@@ -250,15 +255,23 @@ async function fetchDetail(oc: string, item: SearchItem): Promise<DetailResult |
   if (!rulingPoints) return null;
   const rulingRatio = stripHtml(String(detail["판결요지"] ?? ""));
 
+  const caseNumber = String(detail["사건번호"] ?? item.caseNumber);
+  const caseName = String(detail["사건명"] ?? item.caseName);
+  const area = classifyLawArea(caseNumber);
+  const matchText = `${caseName}\n${rulingPoints}\n${rulingRatio}`;
+  const { score, matchedTopics } = scoreCase(area, matchText);
+
   return {
-    caseNumber: String(detail["사건번호"] ?? item.caseNumber),
-    caseName: String(detail["사건명"] ?? item.caseName),
+    caseNumber,
+    caseName,
     court: String(detail["법원명"] ?? item.court),
     date: String(detail["선고일자"] ?? item.date),
     rulingPoints,
     rulingRatio,
     rulingPointsCount: countRulingPoints(rulingPoints),
     rulingPointsLength: rulingPoints.length,
+    score,
+    matchedTopics,
   };
 }
 
@@ -290,6 +303,8 @@ interface StoredCase {
   rulingPointsCount: number;
   rulingPointsLength: number;
   lawArea: LawArea;
+  score: number;
+  matchedTopics: string[];
   addedAt: FirebaseFirestore.Timestamp;
 }
 
@@ -331,6 +346,8 @@ async function saveCases(cases: DetailResult[]): Promise<number> {
       rulingPointsCount: c.rulingPointsCount,
       rulingPointsLength: c.rulingPointsLength,
       lawArea: classifyLawArea(c.caseNumber),
+      score: c.score,
+      matchedTopics: c.matchedTopics,
       addedAt: now,
     };
     batch.set(ref, stored, { merge: false });
@@ -341,6 +358,18 @@ async function saveCases(cases: DetailResult[]): Promise<number> {
 }
 
 // ── 응답 빌더 ─────────────────────────────────────────────────────────────────
+
+function sortByScore(arr: FetchedCase[]) {
+  arr.sort((a, b) => {
+    const sa = a.score ?? 0;
+    const sb = b.score ?? 0;
+    if (sb !== sa) return sb - sa;
+    const ca = a.rulingPointsCount ?? 0;
+    const cb = b.rulingPointsCount ?? 0;
+    if (cb !== ca) return cb - ca;
+    return (b.rulingPointsLength ?? 0) - (a.rulingPointsLength ?? 0);
+  });
+}
 
 function buildResult(
   stored: StoredCase[],
@@ -360,15 +389,12 @@ function buildResult(
       rulingPointsCount: s.rulingPointsCount,
       rulingPointsLength: s.rulingPointsLength,
       lawArea: s.lawArea,
+      score: s.score,
+      matchedTopics: s.matchedTopics,
     });
   }
   for (const area of Object.keys(grouped) as LawArea[]) {
-    grouped[area].sort((a, b) => {
-      const ca = a.rulingPointsCount ?? 0;
-      const cb = b.rulingPointsCount ?? 0;
-      if (cb !== ca) return cb - ca;
-      return (b.rulingPointsLength ?? 0) - (a.rulingPointsLength ?? 0);
-    });
+    sortByScore(grouped[area]);
   }
   return { ...grouped, stats, errors };
 }
@@ -473,15 +499,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         rulingPointsCount: d.rulingPointsCount,
         rulingPointsLength: d.rulingPointsLength,
         lawArea: area,
+        score: d.score,
+        matchedTopics: d.matchedTopics,
       });
     }
     for (const area of Object.keys(grouped) as LawArea[]) {
-      grouped[area].sort((a, b) => {
-        const ca = a.rulingPointsCount ?? 0;
-        const cb = b.rulingPointsCount ?? 0;
-        if (cb !== ca) return cb - ca;
-        return (b.rulingPointsLength ?? 0) - (a.rulingPointsLength ?? 0);
-      });
+      sortByScore(grouped[area]);
     }
 
     return res.status(200).json({
