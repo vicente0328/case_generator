@@ -193,6 +193,7 @@ export default function AdminExamLikelyList({ onAppendCases, refreshSignal }: Pr
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailCase, setDetailCase] = useState<FetchedCase | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
 
   const AREAS: LawArea[] = ["민사법", "공법", "형사법"];
 
@@ -202,6 +203,7 @@ export default function AdminExamLikelyList({ onAppendCases, refreshSignal }: Pr
   const loadList = async () => {
     setLoading(true);
     setFetchError("");
+    setRefreshedAt(null);
     try {
       const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/admin/fetch-important-cases", {
@@ -211,6 +213,7 @@ export default function AdminExamLikelyList({ onAppendCases, refreshSignal }: Pr
       if (!res.ok) throw new Error(data.error ?? "서버 오류");
       setResult(data);
       setHasLoaded(true);
+      setRefreshedAt(Date.now());
     } catch (e) {
       setFetchError(e instanceof Error ? e.message : "오류가 발생했습니다.");
     } finally {
@@ -311,16 +314,28 @@ export default function AdminExamLikelyList({ onAppendCases, refreshSignal }: Pr
           {result && (
             <>
               <div className="px-4 pb-3 flex items-center justify-end gap-2">
-                <button onClick={selectAll} className="text-[11px] text-blue-500 hover:text-blue-700 transition-colors">
+                {refreshedAt && !loading && (
+                  <span className="text-[11px] text-emerald-600 mr-1">
+                    갱신됨 · {totalCount}건
+                  </span>
+                )}
+                <button onClick={selectAll} disabled={loading} className="text-[11px] text-blue-500 hover:text-blue-700 transition-colors disabled:opacity-40">
                   전체 선택
                 </button>
                 <span className="text-zinc-200">|</span>
-                <button onClick={clearAll} className="text-[11px] text-zinc-400 hover:text-zinc-600 transition-colors">
+                <button onClick={clearAll} disabled={loading} className="text-[11px] text-zinc-400 hover:text-zinc-600 transition-colors disabled:opacity-40">
                   선택 해제
                 </button>
                 <span className="text-zinc-200 mx-1">·</span>
-                <button onClick={() => void loadList()} className="text-[11px] text-emerald-600 hover:text-emerald-800 transition-colors">
-                  새로고침
+                <button
+                  onClick={() => void loadList()}
+                  disabled={loading}
+                  className="text-[11px] text-emerald-600 hover:text-emerald-800 transition-colors disabled:opacity-40 flex items-center gap-1"
+                >
+                  {loading && (
+                    <span className="w-3 h-3 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
+                  )}
+                  {loading ? "갱신 중…" : "새로고침"}
                 </button>
               </div>
 
