@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { auth } from "@/lib/firebase";
 import type { FetchResult, FetchedCase } from "@/pages/api/admin/fetch-important-cases";
 
@@ -6,6 +6,7 @@ import type { LawArea } from "@/lib/classifyLawArea";
 
 interface Props {
   onAppendCases: (caseNumbers: string[]) => void;
+  onCommitted?: () => void; // List-up 으로 DB에 신규 추가된 후 호출 — 출제 유력 판례 목록 갱신용
 }
 
 // ── 법역별 스타일 ─────────────────────────────────────────────────────────────
@@ -144,15 +145,14 @@ function StatBadge({ label, count, color }: { label: string; count: number; colo
 }
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
-export default function AdminImportantCases({ onAppendCases }: Props) {
+export default function AdminImportantCases({ onAppendCases, onCommitted }: Props) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [activating, setActivating] = useState(false);
+  const [committing, setCommitting] = useState(false);
   const [result, setResult] = useState<FetchResult | null>(null);
   const [fetchError, setFetchError] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lastAddedCount, setLastAddedCount] = useState<number | null>(null);
-  const [hasLoaded, setHasLoaded] = useState(false);
 
   const AREAS: LawArea[] = ["민사법", "공법", "형사법"];
 
@@ -161,54 +161,57 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
     : [];
   const totalCount = allCases.length;
 
-  // ── DB에서 출제 유력 판례 목록 로드 (GET) ──────────────────────────────────
-  const loadList = async () => {
-    setLoading(true);
-    setFetchError("");
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      const res = await fetch("/api/admin/fetch-important-cases", {
-        headers: { Authorization: `Bearer ${token ?? ""}` },
-      });
-      const data = await res.json() as FetchResult & { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "서버 오류");
-      setResult(data);
-      setHasLoaded(true);
-    } catch (e) {
-      setFetchError(e instanceof Error ? e.message : "오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 패널을 열 때 목록 자동 로드 (한 번만)
-  useEffect(() => {
-    if (open && !hasLoaded) {
-      void loadList();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  // ── Activate: 법제처 검색 + 신규 사건 DB 추가 (POST) ─────────────────────
+  // ── Activate: 법제처 검색 + 선별 (DB 미저장, 후보만 반환) ─────────────────
   const handleActivate = async () => {
     setActivating(true);
     setFetchError("");
     setLastAddedCount(null);
+    setSelected(new Set());
     try {
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch("/api/admin/fetch-important-cases", {
+      const res = await fetch("/api/admin/fetch-important-cases?action=activate", {
         method: "POST",
         headers: { Authorization: `Bearer ${token ?? ""}` },
       });
       const data = await res.json() as FetchResult & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "서버 오류");
       setResult(data);
-      setHasLoaded(true);
-      setLastAddedCount(data.stats.addedThisRun ?? 0);
+      // 기본적으로 모든 후보 선택 — 빠른 List-up 을 위해
+      const all = [...data.민사법, ...data.공법, ...data.형사법].map((c) => c.caseNumber);
+      setSelected(new Set(all));
     } catch (e) {
       setFetchError(e instanceof Error ? e.message : "오류가 발생했습니다.");
     } finally {
       setActivating(false);
+    }
+  };
+
+  // ── List-up: 선택된 후보를 DB(출제 유력 판례)에 저장 ────────────────────
+  const handleListUp = async () => {
+    if (!result || selected.size === 0) return;
+    setCommitting(true);
+    setFetchError("");
+    setLastAddedCount(null);
+    try {
+      const cases = allCases.filter((c) => selected.has(c.caseNumber));
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/admin/fetch-important-cases?action=commit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token ?? ""}`,
+        },
+        body: JSON.stringify({ cases }),
+      });
+      const data = await res.json() as FetchResult & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "서버 오류");
+      setLastAddedCount(data.stats.addedThisRun ?? 0);
+      setSelected(new Set());
+      onCommitted?.();
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : "오류가 발생했습니다.");
+    } finally {
+      setCommitting(false);
     }
   };
 
@@ -256,7 +259,7 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
           <svg className="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
-          <span className="text-[12px] font-semibold text-zinc-400">출제가능성 높은 최신 판례</span>
+          <span className="text-[12px] font-semibold text-zinc-400">출제 유력 판례 선별 (Activate)</span>
           <span className="text-[11px] text-zinc-300">post-2020 대법원 · 판시사항 2개+ 또는 200자+</span>
         </div>
         <svg
@@ -272,14 +275,15 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
           {/* 설명 + Activate 버튼 */}
           <div className="px-4 py-3 flex items-start justify-between gap-3">
             <p className="text-[11px] text-zinc-400 leading-relaxed">
-              법제처 API에서 post-2020 대법원·헌재 판례를 수집한 후,
-              <span className="font-medium text-zinc-600"> 판시사항이 2개 이상이거나 200자 이상</span>인 사건을 선별하여
-              <span className="font-medium text-zinc-600"> 출제 유력 판례 목록</span>에 누적 추가합니다.
-              특별법(자본시장·조세·특허·노동) 사건은 제외됩니다.
+              <span className="font-semibold text-zinc-600">Activate</span> → 법제처 API에서 post-2020 대법원·헌재 판례를 수집·선별 (DB 미저장).
+              <br />
+              <span className="font-semibold text-zinc-600">List-up</span> → 선별 결과를 검토 후 <span className="font-medium text-zinc-600">출제 유력 판례 목록</span>에 저장.
+              <br />
+              판시사항이 2개 이상이거나 200자 이상인 사건만 통과. 특별법(자본시장·조세·특허·노동)은 제외.
             </p>
             <button
               onClick={handleActivate}
-              disabled={activating || loading}
+              disabled={activating || committing}
               className="flex-shrink-0 h-8 px-4 bg-blue-900 text-white rounded-lg text-[12px] font-semibold hover:bg-blue-800 transition-colors disabled:opacity-40 flex items-center gap-2"
             >
               {activating && (
@@ -289,13 +293,13 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
             </button>
           </div>
 
-          {/* Activate 결과 알림 */}
-          {lastAddedCount !== null && !activating && (
-            <div className="mx-4 mb-3 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
-              <p className="text-[12px] text-blue-700">
+          {/* List-up 결과 알림 */}
+          {lastAddedCount !== null && !committing && (
+            <div className="mx-4 mb-3 px-3 py-2 bg-emerald-50 border border-emerald-100 rounded-lg">
+              <p className="text-[12px] text-emerald-700">
                 {lastAddedCount > 0
-                  ? <>이번 실행에 <span className="font-semibold">{lastAddedCount}건</span>의 신규 판례가 목록에 추가되었습니다.</>
-                  : "신규 판례가 없습니다 (모두 기존 목록에 포함됨)."}
+                  ? <>출제 유력 판례 목록에 <span className="font-semibold">{lastAddedCount}건</span>의 판례가 추가되었습니다.</>
+                  : "신규로 추가된 판례가 없습니다 (모두 이미 목록에 포함됨)."}
               </p>
             </div>
           )}
@@ -307,25 +311,22 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
             </div>
           )}
 
-          {/* 로딩 표시 */}
-          {loading && !result && (
-            <div className="px-4 pb-3">
-              <p className="text-[11px] text-zinc-400">목록 불러오는 중…</p>
-            </div>
-          )}
-
-          {/* 결과 영역 */}
+          {/* 결과 영역 (Activate 후 후보 목록) */}
           {result && (
             <>
               {/* 통계 */}
               <div className="px-4 pb-3 flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <StatBadge label="목록 누적" count={result.stats.totalInList ?? totalCount} color="bg-blue-400" />
-                  {result.stats.totalRaw > 0 && (
+                  <StatBadge label="후보" count={totalCount} color="bg-blue-400" />
+                  <span className="text-zinc-200 text-[11px]">·</span>
+                  <span className="text-[11px] text-zinc-400">
+                    수집 {result.stats.totalRaw}건 / 통과 {result.stats.totalFiltered}건
+                  </span>
+                  {(result.stats.totalInList ?? 0) > 0 && (
                     <>
                       <span className="text-zinc-200 text-[11px]">·</span>
                       <span className="text-[11px] text-zinc-400">
-                        이번 수집 {result.stats.totalRaw}건 / 통과 {result.stats.totalFiltered}건
+                        기존 DB {result.stats.totalInList}건
                       </span>
                     </>
                   )}
@@ -366,7 +367,7 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
               </div>
 
               {/* 하단 액션 바 */}
-              <div className="px-4 pb-4 flex items-center justify-between border-t border-zinc-100 pt-3">
+              <div className="px-4 pb-4 flex items-center justify-between border-t border-zinc-100 pt-3 gap-2">
                 <p className="text-[11px] text-zinc-400">
                   {selected.size > 0 ? (
                     <><span className="font-semibold text-zinc-700">{selected.size}개</span> 선택됨</>
@@ -374,17 +375,25 @@ export default function AdminImportantCases({ onAppendCases }: Props) {
                     "판례를 선택하세요"
                   )}
                 </p>
-                <button
-                  onClick={handleAddToBatch}
-                  disabled={selected.size === 0}
-                  className="h-8 px-4 bg-emerald-700 text-white rounded-lg text-[12px] font-semibold hover:bg-emerald-600 transition-colors disabled:opacity-40 flex items-center gap-1.5"
-                >
-                  {/* 플러스 아이콘 */}
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                  일괄 생성에 추가 ({selected.size})
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleAddToBatch}
+                    disabled={selected.size === 0 || committing}
+                    className="h-8 px-3 bg-zinc-100 text-zinc-700 rounded-lg text-[12px] font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+                  >
+                    일괄 생성에 추가 ({selected.size})
+                  </button>
+                  <button
+                    onClick={handleListUp}
+                    disabled={selected.size === 0 || committing}
+                    className="h-8 px-4 bg-emerald-700 text-white rounded-lg text-[12px] font-semibold hover:bg-emerald-600 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+                  >
+                    {committing && (
+                      <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    )}
+                    {committing ? "저장 중…" : `List-up (DB 저장) (${selected.size})`}
+                  </button>
+                </div>
               </div>
             </>
           )}

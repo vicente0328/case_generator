@@ -23,8 +23,11 @@ export interface FetchedCase {
   court?: string;
   date?: string;
   sources: string[];
+  rulingPoints?: string;
+  rulingRatio?: string;
   rulingPointsCount?: number;
   rulingPointsLength?: number;
+  lawArea?: LawArea;
 }
 
 export interface FetchResult {
@@ -225,11 +228,13 @@ async function collectRecentCases(oc: string): Promise<{ items: SearchItem[]; er
   return { items: filtered, debug };
 }
 
-interface DetailResult {
+export interface DetailResult {
   caseNumber: string;
   caseName: string;
   court: string;
   date: string;
+  rulingPoints: string;       // 판시사항 본문
+  rulingRatio: string;        // 판결요지 본문
   rulingPointsCount: number;
   rulingPointsLength: number;
 }
@@ -243,12 +248,15 @@ async function fetchDetail(oc: string, item: SearchItem): Promise<DetailResult |
 
   const rulingPoints = stripHtml(String(detail["판시사항"] ?? ""));
   if (!rulingPoints) return null;
+  const rulingRatio = stripHtml(String(detail["판결요지"] ?? ""));
 
   return {
     caseNumber: String(detail["사건번호"] ?? item.caseNumber),
     caseName: String(detail["사건명"] ?? item.caseName),
     court: String(detail["법원명"] ?? item.court),
     date: String(detail["선고일자"] ?? item.date),
+    rulingPoints,
+    rulingRatio,
     rulingPointsCount: countRulingPoints(rulingPoints),
     rulingPointsLength: rulingPoints.length,
   };
@@ -277,6 +285,8 @@ interface StoredCase {
   caseName: string;
   court: string;
   date: string;
+  rulingPoints: string;
+  rulingRatio: string;
   rulingPointsCount: number;
   rulingPointsLength: number;
   lawArea: LawArea;
@@ -316,6 +326,8 @@ async function saveCases(cases: DetailResult[]): Promise<number> {
       caseName: c.caseName,
       court: c.court,
       date: c.date,
+      rulingPoints: c.rulingPoints,
+      rulingRatio: c.rulingRatio,
       rulingPointsCount: c.rulingPointsCount,
       rulingPointsLength: c.rulingPointsLength,
       lawArea: classifyLawArea(c.caseNumber),
@@ -343,8 +355,11 @@ function buildResult(
       court: s.court,
       date: s.date,
       sources: ["법제처"],
+      rulingPoints: s.rulingPoints,
+      rulingRatio: s.rulingRatio,
       rulingPointsCount: s.rulingPointsCount,
       rulingPointsLength: s.rulingPointsLength,
+      lawArea: s.lawArea,
     });
   }
   for (const area of Object.keys(grouped) as LawArea[]) {
@@ -359,8 +374,9 @@ function buildResult(
 }
 
 // ── 메인 핸들러 ───────────────────────────────────────────────────────────────
-// GET  → DB의 출제 유력 판례 목록 반환
-// POST → 법제처 검색 + 선별 + DB에 신규 추가 + 갱신된 목록 반환
+// GET                    → DB의 출제 유력 판례 목록 반환
+// POST ?action=activate  → 법제처 검색 + 선별 → 후보 반환 (DB 미저장)
+// POST ?action=commit    → body.cases 의 사건들을 DB에 저장
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).end();
@@ -383,7 +399,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       );
     }
 
-    // POST — Activate
+    // POST 분기
+    const action = String(req.query.action || "activate");
+
+    if (action === "commit") {
+      // body 에서 후보 사건들을 받아 DB에 저장
+      const body = req.body as { cases?: DetailResult[] } | undefined;
+      const cases = Array.isArray(body?.cases) ? body!.cases : [];
+      if (cases.length === 0) {
+        return res.status(400).json({ error: "저장할 판례가 없습니다." });
+      }
+      // 기존 DB와 중복 제거
+      const existing = await loadExistingCaseNumbers();
+      const novel = cases.filter((c) => c.caseNumber && !existing.has(c.caseNumber));
+      const addedCount = await saveCases(novel);
+      const stored = await loadAll();
+
+      return res.status(200).json(
+        buildResult(stored, {
+          lawGoKr: 0,
+          journal: 0,
+          aiSuggested: 0,
+          totalRaw: cases.length,
+          totalFiltered: novel.length,
+          addedThisRun: addedCount,
+          totalInList: stored.length,
+        }, errors)
+      );
+    }
+
+    // action === "activate" — 검색 + 선별 (DB 미저장, 후보만 반환)
     const oc = process.env.LAW_OC;
     if (!oc) return res.status(500).json({ error: "환경변수 필요: LAW_OC" });
 
@@ -391,11 +436,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const collected = await collectRecentCases(oc);
     if (collected.error) errors.push(`법제처: ${collected.error}`);
-    // 진단 로그 — UI 에러 영역에 노출
     for (const d of collected.debug.slice(0, 5)) errors.push(`[debug] ${d}`);
     const totalRaw = collected.items.length;
 
-    // 이미 DB에 있는 사건 사전 제외 → 상세 조회 비용 절감
+    // 이미 DB에 있는 사건 사전 제외 (이미 출제 유력 목록에 들어가 있음)
     const novel = collected.items.filter((it) => !existing.has(it.caseNumber));
     errors.push(`[debug] 신규 사건(기존 DB 제외 후)=${novel.length}, 기존 DB=${existing.size}`);
 
@@ -414,21 +458,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
     errors.push(`[debug] 임계값 통과=${passed.length}/${details.length}`);
 
-    const addedCount = await saveCases(passed);
+    // 후보를 법역별로 그룹핑 (저장은 안 함)
+    const grouped: Record<LawArea, FetchedCase[]> = { 민사법: [], 공법: [], 형사법: [] };
+    for (const d of passed) {
+      const area = classifyLawArea(d.caseNumber);
+      grouped[area].push({
+        caseNumber: d.caseNumber,
+        caseName: d.caseName,
+        court: d.court,
+        date: d.date,
+        sources: ["법제처"],
+        rulingPoints: d.rulingPoints,
+        rulingRatio: d.rulingRatio,
+        rulingPointsCount: d.rulingPointsCount,
+        rulingPointsLength: d.rulingPointsLength,
+        lawArea: area,
+      });
+    }
+    for (const area of Object.keys(grouped) as LawArea[]) {
+      grouped[area].sort((a, b) => {
+        const ca = a.rulingPointsCount ?? 0;
+        const cb = b.rulingPointsCount ?? 0;
+        if (cb !== ca) return cb - ca;
+        return (b.rulingPointsLength ?? 0) - (a.rulingPointsLength ?? 0);
+      });
+    }
 
-    const stored = await loadAll();
-
-    return res.status(200).json(
-      buildResult(stored, {
+    return res.status(200).json({
+      ...grouped,
+      stats: {
         lawGoKr: totalRaw,
         journal: 0,
         aiSuggested: 0,
         totalRaw,
         totalFiltered: passed.length,
-        addedThisRun: addedCount,
-        totalInList: stored.length,
-      }, errors)
-    );
+        addedThisRun: 0,           // Activate 단계는 DB 저장 안 함
+        totalInList: existing.size,
+      },
+      errors,
+    } as FetchResult);
   } catch (e) {
     console.error("[fetch-important-cases]", e);
     return res.status(500).json({

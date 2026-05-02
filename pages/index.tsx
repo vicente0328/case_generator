@@ -7,6 +7,7 @@ import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc
 import type { CaseData } from "./api/case-lookup";
 import AdminBatchGenerator, { type AppendPayload } from "@/components/AdminBatchGenerator";
 import AdminImportantCases from "@/components/AdminImportantCases";
+import AdminExamLikelyList from "@/components/AdminExamLikelyList";
 import AdminPromptEditor from "@/components/AdminPromptEditor";
 import AuthModal from "@/components/AuthModal";
 import RulingPreviewModal from "@/components/RulingPreviewModal";
@@ -553,6 +554,7 @@ export default function Home() {
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualText, setManualText] = useState("");
   const [batchAppendPayload, setBatchAppendPayload] = useState<AppendPayload>({ cases: [], version: 0 });
+  const [examLikelyRefreshSignal, setExamLikelyRefreshSignal] = useState(0);
   const [modelUsed, setModelUsed] = useState<string | null>(null);
   const [generationCost, setGenerationCost] = useState<{ inputTokens: number; outputTokens: number; costUsd: number } | null>(null);
   const [guestModeEnabled, setGuestModeEnabled] = useState(true);
@@ -1440,6 +1442,13 @@ ${renderSectionsHtml(post.content as string || "")}
                   onAppendCases={(nums) =>
                     setBatchAppendPayload((prev) => ({ cases: nums, version: prev.version + 1 }))
                   }
+                  onCommitted={() => setExamLikelyRefreshSignal((v) => v + 1)}
+                />
+                <AdminExamLikelyList
+                  onAppendCases={(nums) =>
+                    setBatchAppendPayload((prev) => ({ cases: nums, version: prev.version + 1 }))
+                  }
+                  refreshSignal={examLikelyRefreshSignal}
                 />
                 <AdminBatchGenerator
                   user={user}
