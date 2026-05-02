@@ -23,8 +23,34 @@ function formatDate(d?: string): string {
 
 // ── 판결요지 모달 ─────────────────────────────────────────────────────────────
 function RulingDetailModal({ c, onClose }: { c: FetchedCase; onClose: () => void }) {
-  const ratio = (c.rulingRatio || "").trim();
-  const points = (c.rulingPoints || "").trim();
+  const [points, setPoints] = useState((c.rulingPoints || "").trim());
+  const [ratio, setRatio] = useState((c.rulingRatio || "").trim());
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState("");
+
+  // DB에 텍스트가 없으면 (legacy 문서) /api/case-lookup 으로 즉시 폴백 조회
+  const fetchLive = async () => {
+    setFetching(true);
+    setFetchError("");
+    try {
+      const res = await fetch(`/api/case-lookup?caseNumber=${encodeURIComponent(c.caseNumber)}`);
+      const data = await res.json() as { rulingPoints?: string; rulingRatio?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "법제처 조회 실패");
+      setPoints((data.rulingPoints || "").trim());
+      setRatio((data.rulingRatio || "").trim());
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : "조회 실패");
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  // 마운트 시 텍스트 비어있으면 자동 폴백 (legacy DB 문서 보정)
+  useEffect(() => {
+    if (!points && !ratio) void fetchLive();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
@@ -51,20 +77,46 @@ function RulingDetailModal({ c, onClose }: { c: FetchedCase; onClose: () => void
 
         {/* 본문 */}
         <div className="px-6 py-5 overflow-y-auto flex-1 space-y-5">
+          {fetching && !points && !ratio && (
+            <div className="flex items-center gap-2 text-[12px] text-zinc-400">
+              <span className="w-3 h-3 border-2 border-zinc-200 border-t-zinc-500 rounded-full animate-spin" />
+              법제처에서 본문을 가져오는 중…
+            </div>
+          )}
+          {fetchError && (
+            <div className="px-3 py-2 bg-red-50 border border-red-100 rounded-lg">
+              <p className="text-[12px] text-red-600">{fetchError}</p>
+            </div>
+          )}
           {points && (
             <div>
               <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">판시사항</p>
               <p className="text-[13px] text-zinc-700 leading-[1.85] whitespace-pre-line">{points}</p>
             </div>
           )}
-          {ratio ? (
+          {ratio && (
             <div>
               <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">판결요지</p>
               <p className="text-[14px] text-zinc-700 leading-[1.85] whitespace-pre-line">{ratio}</p>
             </div>
-          ) : (
-            !points && <p className="text-[13px] text-zinc-300 italic">판결요지·판시사항 정보가 없습니다.</p>
           )}
+          {!points && !ratio && !fetching && !fetchError && (
+            <p className="text-[13px] text-zinc-300 italic">판결요지·판시사항 정보가 없습니다.</p>
+          )}
+        </div>
+
+        {/* 푸터 — 재조회 버튼 */}
+        <div className="px-6 py-3 border-t border-zinc-100 flex items-center justify-end flex-shrink-0">
+          <button
+            onClick={() => void fetchLive()}
+            disabled={fetching}
+            className="text-[11px] text-blue-600 hover:text-blue-800 transition-colors disabled:opacity-40 flex items-center gap-1"
+          >
+            {fetching && (
+              <span className="w-3 h-3 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+            )}
+            {fetching ? "조회 중…" : "법제처에서 재조회"}
+          </button>
         </div>
       </div>
     </div>

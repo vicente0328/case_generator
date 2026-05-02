@@ -336,18 +336,19 @@ async function saveCases(cases: DetailResult[]): Promise<number> {
   for (const c of cases) {
     const docId = caseNumberToDocId(c.caseNumber);
     const ref = db.collection(COLLECTION).doc(docId);
+    // Firestore 는 undefined 를 거부하므로 모든 문자열·배열 필드를 안전 기본값으로 강제
     const stored: StoredCase = {
       caseNumber: c.caseNumber,
-      caseName: c.caseName,
-      court: c.court,
-      date: c.date,
-      rulingPoints: c.rulingPoints,
-      rulingRatio: c.rulingRatio,
-      rulingPointsCount: c.rulingPointsCount,
-      rulingPointsLength: c.rulingPointsLength,
+      caseName: c.caseName ?? "",
+      court: c.court ?? "",
+      date: c.date ?? "",
+      rulingPoints: c.rulingPoints ?? "",
+      rulingRatio: c.rulingRatio ?? "",
+      rulingPointsCount: c.rulingPointsCount ?? 0,
+      rulingPointsLength: c.rulingPointsLength ?? 0,
       lawArea: classifyLawArea(c.caseNumber),
-      score: c.score,
-      matchedTopics: c.matchedTopics,
+      score: c.score ?? 0,
+      matchedTopics: c.matchedTopics ?? [],
       addedAt: now,
     };
     batch.set(ref, stored, { merge: false });
