@@ -72,7 +72,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const text = result.response.text();
     const arr = extractJsonArray(text) ?? [];
 
-    // 정규식으로 잘못된 항목 필터링 + 중복 제거 + 50건 truncate
+    // 정규식으로 잘못된 항목 필터링 + 중복 제거 + 100건 truncate
     const seen = new Set<string>();
     const valid: string[] = [];
     for (const raw of arr) {
@@ -81,7 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (seen.has(cn)) continue;
       seen.add(cn);
       valid.push(cn);
-      if (valid.length >= 50) break;
+      if (valid.length >= 100) break;
     }
 
     return res.status(200).json({ caseNumbers: valid } satisfies ExtractResponse);

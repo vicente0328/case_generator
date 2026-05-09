@@ -591,7 +591,7 @@ export default function MyArchive() {
         />
         <div className="flex items-center justify-between mt-3 gap-3">
           <p className="text-[11px] text-zinc-400">
-            {input.split(/[\n,;\s]+/).filter(Boolean).length}건 입력됨 (최대 50건)
+            {input.split(/[\n,;\s]+/).filter(Boolean).length}건 입력됨 (최대 100건)
           </p>
           <button
             onClick={() => handleSubmit()}

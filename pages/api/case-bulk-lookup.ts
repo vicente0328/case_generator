@@ -28,8 +28,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!Array.isArray(caseNumbers) || caseNumbers.length === 0) {
     return res.status(400).json({ error: "caseNumbers 배열이 필요합니다." });
   }
-  if (caseNumbers.length > 50) {
-    return res.status(400).json({ error: "한 번에 최대 50건까지 처리할 수 있습니다." });
+  if (caseNumbers.length > 100) {
+    return res.status(400).json({ error: "한 번에 최대 100건까지 처리할 수 있습니다." });
   }
   const inputs = caseNumbers
     .map(c => (typeof c === "string" ? c.trim() : ""))
