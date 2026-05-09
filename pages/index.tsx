@@ -545,6 +545,18 @@ export default function Home() {
     if (typeof window !== "undefined") localStorage.setItem("homeMode", mode);
   }, [mode]);
 
+  // My Archive 신규 기능 소개 배너
+  const [showArchiveIntro, setShowArchiveIntro] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const dismissed = localStorage.getItem("archiveIntroDismissedV1");
+    if (!dismissed) setShowArchiveIntro(true);
+  }, []);
+  const dismissArchiveIntro = () => {
+    setShowArchiveIntro(false);
+    if (typeof window !== "undefined") localStorage.setItem("archiveIntroDismissedV1", "1");
+  };
+
   const [activeTab, setActiveTab] = useState<LawArea>("민사법");
   const [step, setStep] = useState<Step>("input");
   const [input, setInput] = useState("");
@@ -1073,6 +1085,79 @@ ${renderSectionsHtml(post.content as string || "")}
           </p>
         </div>
 
+        {/* My Archive 신규 기능 소개 (생성기 모드에서만) */}
+        {showArchiveIntro && mode === "generator" && (
+          <div className="relative mb-6 overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 shadow-[0_2px_12px_rgba(30,64,175,0.06)]">
+            {/* 미세한 장식 */}
+            <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-blue-200/30 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-16 -left-12 w-40 h-40 rounded-full bg-indigo-200/30 blur-3xl pointer-events-none" />
+
+            <button
+              onClick={dismissArchiveIntro}
+              aria-label="닫기"
+              className="absolute top-3 right-3 z-10 w-7 h-7 rounded-full text-zinc-400 hover:text-zinc-700 hover:bg-white/60 transition-colors flex items-center justify-center"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18M6 6l12 12"/>
+              </svg>
+            </button>
+
+            <div className="relative px-6 sm:px-7 py-6 sm:py-7">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="inline-flex items-center text-[10px] font-bold tracking-widest px-2 py-0.5 rounded-full bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-sm">
+                  NEW
+                </span>
+                <span className="text-[11px] font-semibold text-blue-900/70 uppercase tracking-widest">
+                  My Archive
+                </span>
+              </div>
+
+              <h2 className="text-[19px] sm:text-[21px] font-bold tracking-tight text-zinc-900 leading-snug mb-2">
+                나만의 판례 아카이브로<br className="sm:hidden" /> 효율적으로 학습하세요
+              </h2>
+              <p className="text-[13px] sm:text-[14px] text-zinc-500 leading-relaxed mb-5 max-w-[560px]">
+                사건번호를 한 번에 모아 판시사항·판결요지를 자동으로 저장하고,
+                형광펜·메모·태그로 정리할 수 있습니다.
+              </p>
+
+              <div className="flex flex-wrap gap-x-5 gap-y-2 mb-6">
+                {[
+                  { icon: "📋", label: "사건번호 일괄 list-up" },
+                  { icon: "🖍", label: "형광펜 · 다중 메모" },
+                  { icon: "⭐", label: "별점 · 태그 필터링" },
+                ].map(f => (
+                  <div key={f.label} className="flex items-center gap-1.5 text-[12px] text-zinc-600">
+                    <span className="text-[14px]">{f.icon}</span>
+                    <span className="font-medium">{f.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    if (!user) { setShowAuthModal(true); return; }
+                    setMode("archive");
+                    dismissArchiveIntro();
+                  }}
+                  className="inline-flex items-center gap-1.5 h-10 px-5 bg-blue-900 hover:bg-blue-800 text-white text-[13px] font-semibold rounded-xl shadow-[0_2px_8px_rgba(30,64,175,0.25)] hover:shadow-[0_4px_12px_rgba(30,64,175,0.35)] transition-all"
+                >
+                  지금 체험하기
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M13 5l7 7-7 7"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={dismissArchiveIntro}
+                  className="text-[12px] text-zinc-400 hover:text-zinc-700 transition-colors"
+                >
+                  다시 보지 않기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 모드 토글 */}
         <div className="flex gap-1 mb-6 bg-white border border-zinc-100 rounded-xl p-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)] max-w-sm mx-auto">
           <button
@@ -1090,13 +1175,16 @@ ${renderSectionsHtml(post.content as string || "")}
               if (!user) { setShowAuthModal(true); return; }
               setMode("archive");
             }}
-            className={`flex-1 py-2 text-[13px] rounded-lg transition-colors ${
+            className={`relative flex-1 py-2 text-[13px] rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
               mode === "archive"
                 ? "font-semibold text-blue-900 bg-blue-50"
                 : "font-medium text-zinc-500 hover:text-zinc-800"
             }`}
           >
-            My Archive
+            <span>My Archive</span>
+            <span className="inline-flex items-center text-[9px] font-bold tracking-wider px-1.5 py-[1px] rounded-full bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-sm">
+              NEW
+            </span>
           </button>
         </div>
 
