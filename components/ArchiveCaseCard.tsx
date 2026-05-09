@@ -1,4 +1,5 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   doc,
   updateDoc,
@@ -195,7 +196,11 @@ export default function ArchiveCaseCard({
   const [collapsedPoints, setCollapsedPoints] = useState(false);
   const [collapsedRatio, setCollapsedRatio] = useState(false);
   const [pending, setPending] = useState<
-    { text: string; field: "rulingPoints" | "rulingRatio" } | null
+    {
+      text: string;
+      field: "rulingPoints" | "rulingRatio";
+      rect: { top: number; bottom: number; left: number; width: number };
+    } | null
   >(null);
   const [newTag, setNewTag] = useState("");
 
@@ -303,8 +308,25 @@ export default function ArchiveCaseCard({
       setPending(null);
       return;
     }
-    setPending({ text, field });
+    const r = range.getBoundingClientRect();
+    setPending({
+      text,
+      field,
+      rect: { top: r.top, bottom: r.bottom, left: r.left, width: r.width },
+    });
   };
+
+  // 팝오버 밖 클릭 시 자동 닫기
+  useEffect(() => {
+    if (!pending) return;
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-highlight-popover]")) return;
+      setPending(null);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [pending]);
 
   const addHighlight = async () => {
     if (!pending) return;
@@ -515,20 +537,44 @@ export default function ArchiveCaseCard({
           )}
         </div>
 
-        {pending && (
-          <div className="sticky bottom-3 z-10 flex justify-center">
-            <button
-              onClick={addHighlight}
-              className="px-4 h-9 bg-yellow-300 hover:bg-yellow-400 text-zinc-900 text-[12px] font-semibold rounded-full shadow-md transition-colors flex items-center gap-1.5"
-            >
-              <span>형광펜 적용</span>
-              <span className="text-[10px] opacity-60 max-w-[180px] truncate">
-                "{pending.text.slice(0, 30)}{pending.text.length > 30 ? "…" : ""}"
-              </span>
-            </button>
-          </div>
-        )}
       </div>
+      {pending && typeof window !== "undefined" &&
+        createPortal(
+          (() => {
+            const BTN_H = 36;
+            const GAP = 8;
+            // 위쪽 공간이 부족하면 선택 영역 아래로 뒤집기
+            const flipBelow = pending.rect.top < BTN_H + GAP + 4;
+            const top = flipBelow
+              ? pending.rect.bottom + window.scrollY + GAP
+              : pending.rect.top + window.scrollY - BTN_H - GAP;
+            // 가로 중앙 + 뷰포트 좌우 클램프
+            const centerX = pending.rect.left + window.scrollX + pending.rect.width / 2;
+            const minX = window.scrollX + 12;
+            const maxX = window.scrollX + window.innerWidth - 12;
+            const left = Math.max(minX, Math.min(centerX, maxX));
+            return (
+              <div
+                data-highlight-popover
+                style={{ position: "absolute", top, left, transform: "translateX(-50%)", zIndex: 50 }}
+              >
+                <button
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={addHighlight}
+                  className="px-3.5 h-9 bg-yellow-300 hover:bg-yellow-400 text-zinc-900 text-[12px] font-semibold rounded-full shadow-lg ring-1 ring-yellow-500/20 transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 11l-6 6v3h3l6-6"/>
+                    <path d="M14 7l3-3 3 3-3 3z"/>
+                    <path d="M9 11l5-5 4 4-5 5z"/>
+                  </svg>
+                  형광펜
+                </button>
+              </div>
+            );
+          })(),
+          document.body,
+        )}
 
       {/* 메모 섹션 */}
       <div className="px-5 py-4 border-t border-zinc-100 bg-zinc-50/50">
