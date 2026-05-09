@@ -11,7 +11,7 @@ import {
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { classifyLawArea, type LawArea } from "@/lib/classifyLawArea";
-import ArchiveCaseCard, { type ArchiveCase, type ArchiveMemo } from "./ArchiveCaseCard";
+import ArchiveCaseCard, { type ArchiveCase } from "./ArchiveCaseCard";
 import type { BulkLookupResponse } from "@/pages/api/case-bulk-lookup";
 
 const AREAS: LawArea[] = ["민사법", "공법", "형사법"];
@@ -55,6 +55,7 @@ export default function MyArchive() {
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("dateDesc");
   const [activeArea, setActiveArea] = useState<LawArea>("민사법");
+  const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
 
   // 초기 로드
   useEffect(() => {
@@ -82,6 +83,9 @@ export default function MyArchive() {
             serialNo: data.serialNo,
             fetchedAt: data.fetchedAt ?? null,
             memos: Array.isArray(data.memos) ? data.memos : [],
+            importance: typeof data.importance === "number" ? data.importance : 0,
+            tags: Array.isArray(data.tags) ? data.tags : [],
+            highlights: data.highlights ?? { rulingPoints: [], rulingRatio: [] },
           };
         });
         if (!cancelled) setCases(list);
@@ -171,21 +175,34 @@ export default function MyArchive() {
     setCases(prev => prev.filter(c => c.id !== id));
   };
 
-  const handleMemosChanged = (id: string, memos: ArchiveMemo[]) => {
-    setCases(prev => prev.map(c => (c.id === id ? { ...c, memos } : c)));
+  const handleUpdated = (id: string, partial: Partial<ArchiveCase>) => {
+    setCases(prev => prev.map(c => (c.id === id ? { ...c, ...partial } : c)));
   };
+
+  // 전체 태그 (해당 법역 내)
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of cases) {
+      if (c.lawArea !== activeArea) continue;
+      for (const t of c.tags ?? []) set.add(t);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [cases, activeArea]);
 
   // 검색/정렬/필터링
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     const inArea = cases.filter(c => c.lawArea === activeArea);
+    const tagged = tagFilter.size === 0
+      ? inArea
+      : inArea.filter(c => (c.tags ?? []).some(t => tagFilter.has(t)));
     const matched = s
-      ? inArea.filter(c =>
-          (c.caseNumber + " " + c.caseName + " " + c.rulingPoints + " " + c.rulingRatio)
+      ? tagged.filter(c =>
+          (c.caseNumber + " " + c.caseName + " " + c.rulingPoints + " " + c.rulingRatio + " " + (c.tags ?? []).join(" "))
             .toLowerCase()
             .includes(s)
         )
-      : inArea;
+      : tagged;
     const sorted = [...matched].sort((a, b) => {
       if (sortMode === "dateDesc") {
         const ad = (a.date || "").replace(/\D/g, "");
@@ -197,7 +214,7 @@ export default function MyArchive() {
       return bt - at;
     });
     return sorted;
-  }, [cases, search, sortMode, activeArea]);
+  }, [cases, search, sortMode, activeArea, tagFilter]);
 
   const counts = useMemo(() => {
     const c: Record<LawArea, number> = { 민사법: 0, 공법: 0, 형사법: 0 };
@@ -295,7 +312,10 @@ export default function MyArchive() {
           return (
             <button
               key={area}
-              onClick={() => setActiveArea(area)}
+              onClick={() => {
+                setActiveArea(area);
+                setTagFilter(new Set());
+              }}
               className={`flex-1 h-9 rounded-lg text-[13px] font-medium transition-all flex items-center justify-center gap-2 ${
                 active ? style.tabActive : style.tab
               }`}
@@ -312,6 +332,46 @@ export default function MyArchive() {
           );
         })}
       </div>
+
+      {/* 태그 필터 */}
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mr-1">
+            태그
+          </span>
+          {allTags.map(t => {
+            const active = tagFilter.has(t);
+            return (
+              <button
+                key={t}
+                onClick={() =>
+                  setTagFilter(prev => {
+                    const next = new Set(prev);
+                    if (next.has(t)) next.delete(t);
+                    else next.add(t);
+                    return next;
+                  })
+                }
+                className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
+                  active
+                    ? "bg-blue-900 text-white border-blue-900"
+                    : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400"
+                }`}
+              >
+                #{t}
+              </button>
+            );
+          })}
+          {tagFilter.size > 0 && (
+            <button
+              onClick={() => setTagFilter(new Set())}
+              className="text-[11px] text-zinc-400 hover:text-zinc-700 transition-colors ml-1"
+            >
+              초기화
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 리스트 */}
       <div className="space-y-3">
@@ -331,8 +391,9 @@ export default function MyArchive() {
               key={c.id}
               uid={user.uid}
               c={c}
+              searchTerm={search}
               onDeleted={handleDeleted}
-              onMemosChanged={handleMemosChanged}
+              onUpdated={handleUpdated}
             />
           ))
         )}

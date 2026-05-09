@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, Timestamp } from "firebase/firestore";
+import { useRef, useState, type ReactNode } from "react";
+import {
+  doc,
+  updateDoc,
+  deleteDoc,
+  arrayUnion,
+  arrayRemove,
+  Timestamp,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { LawArea } from "@/lib/classifyLawArea";
 
@@ -7,6 +14,11 @@ export interface ArchiveMemo {
   id: string;
   text: string;
   createdAt: Timestamp | { seconds: number; nanoseconds?: number } | null;
+}
+
+export interface ArchiveHighlights {
+  rulingPoints: string[];
+  rulingRatio: string[];
 }
 
 export interface ArchiveCase {
@@ -21,13 +33,17 @@ export interface ArchiveCase {
   serialNo?: string;
   fetchedAt?: Timestamp | { seconds: number } | null;
   memos: ArchiveMemo[];
+  importance?: number;
+  tags?: string[];
+  highlights?: ArchiveHighlights;
 }
 
 interface Props {
   uid: string;
   c: ArchiveCase;
+  searchTerm: string;
   onDeleted: (id: string) => void;
-  onMemosChanged: (id: string, memos: ArchiveMemo[]) => void;
+  onUpdated: (id: string, partial: Partial<ArchiveCase>) => void;
 }
 
 function formatDate(d?: string): string {
@@ -51,14 +67,136 @@ function formatMemoDate(t: ArchiveMemo["createdAt"]): string {
   return `${yy}-${mm}-${dd} ${hh}:${min}`;
 }
 
-export default function ArchiveCaseCard({ uid, c, onDeleted, onMemosChanged }: Props) {
+// 텍스트 + 영구 하이라이트 + 검색어 매치를 동시에 렌더링
+// flag bitmask: 1 = highlight, 2 = search match
+function renderWithHighlights(
+  text: string,
+  highlights: string[],
+  searchTerm: string,
+  onHighlightClick: (h: string) => void,
+): ReactNode[] {
+  if (!text) return [];
+
+  const flags = new Array<number>(text.length).fill(0);
+  // 영구 하이라이트 매치 — 모든 occurrence
+  const highlightRanges: { start: number; end: number; text: string }[] = [];
+  for (const h of highlights) {
+    if (!h) continue;
+    let idx = 0;
+    while (true) {
+      const found = text.indexOf(h, idx);
+      if (found === -1) break;
+      for (let i = found; i < found + h.length; i++) flags[i] |= 1;
+      highlightRanges.push({ start: found, end: found + h.length, text: h });
+      idx = found + h.length;
+    }
+  }
+  // 검색어 매치 — 대소문자 무시
+  const term = searchTerm.trim();
+  if (term) {
+    const lower = text.toLowerCase();
+    const t = term.toLowerCase();
+    let idx = 0;
+    while (true) {
+      const found = lower.indexOf(t, idx);
+      if (found === -1) break;
+      for (let i = found; i < found + t.length; i++) flags[i] |= 2;
+      idx = found + t.length;
+    }
+  }
+
+  const result: ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < text.length) {
+    const f = flags[i];
+    let j = i + 1;
+    while (j < text.length && flags[j] === f) j++;
+    const segment = text.slice(i, j);
+    if (f === 0) {
+      result.push(segment);
+    } else {
+      // 어느 highlight에 속하는지 (제거용)
+      const containingHighlight = highlightRanges.find(r => r.start <= i && r.end >= j);
+      const className =
+        (f & 1) && (f & 2)
+          ? "bg-yellow-300 ring-1 ring-blue-500 rounded px-0.5 cursor-pointer"
+          : f & 2
+            ? "bg-blue-200 rounded px-0.5"
+            : "bg-yellow-200 rounded px-0.5 cursor-pointer hover:bg-yellow-300";
+      result.push(
+        <mark
+          key={key++}
+          className={className}
+          onClick={
+            (f & 1) && containingHighlight
+              ? (e) => {
+                  e.stopPropagation();
+                  onHighlightClick(containingHighlight.text);
+                }
+              : undefined
+          }
+          title={(f & 1) ? "클릭하여 하이라이트 제거" : undefined}
+        >
+          {segment}
+        </mark>,
+      );
+    }
+    i = j;
+  }
+  return result;
+}
+
+function StarRating({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const [hover, setHover] = useState(0);
+  return (
+    <div className="flex items-center gap-0.5" onMouseLeave={() => setHover(0)}>
+      {[1, 2, 3, 4, 5].map((n) => {
+        const filled = (hover || value) >= n;
+        return (
+          <button
+            key={n}
+            onClick={() => onChange(value === n ? 0 : n)}
+            onMouseEnter={() => setHover(n)}
+            className={`text-[16px] leading-none transition-colors ${
+              filled ? "text-amber-400 hover:text-amber-500" : "text-zinc-300 hover:text-amber-300"
+            }`}
+            title={`${n}점`}
+          >
+            ★
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function ArchiveCaseCard({ uid, c, searchTerm, onDeleted, onUpdated }: Props) {
   const [newMemo, setNewMemo] = useState("");
   const [busy, setBusy] = useState(false);
-  const [expandedPoints, setExpandedPoints] = useState(false);
-  const [expandedRatio, setExpandedRatio] = useState(false);
+  const [collapsedPoints, setCollapsedPoints] = useState(false);
+  const [collapsedRatio, setCollapsedRatio] = useState(false);
+  const [pending, setPending] = useState<
+    { text: string; field: "rulingPoints" | "rulingRatio" } | null
+  >(null);
+  const [newTag, setNewTag] = useState("");
+
+  const pointsRef = useRef<HTMLDivElement>(null);
+  const ratioRef = useRef<HTMLDivElement>(null);
 
   const docRef = doc(db, "users", uid, "myCases", c.id);
+  const tags = c.tags ?? [];
+  const importance = c.importance ?? 0;
+  const highlights: ArchiveHighlights = c.highlights ?? { rulingPoints: [], rulingRatio: [] };
+  const memos = c.memos ?? [];
 
+  // ── 메모 ──
   const handleAddMemo = async () => {
     const text = newMemo.trim();
     if (!text || busy) return;
@@ -70,7 +208,7 @@ export default function ArchiveCaseCard({ uid, c, onDeleted, onMemosChanged }: P
     };
     try {
       await updateDoc(docRef, { memos: arrayUnion(memo) });
-      onMemosChanged(c.id, [...c.memos, memo]);
+      onUpdated(c.id, { memos: [...memos, memo] });
       setNewMemo("");
     } catch (e) {
       console.error("memo add failed", e);
@@ -84,13 +222,14 @@ export default function ArchiveCaseCard({ uid, c, onDeleted, onMemosChanged }: P
     if (!confirm("이 메모를 삭제하시겠습니까?")) return;
     try {
       await updateDoc(docRef, { memos: arrayRemove(memo) });
-      onMemosChanged(c.id, c.memos.filter(m => m.id !== memo.id));
+      onUpdated(c.id, { memos: memos.filter(m => m.id !== memo.id) });
     } catch (e) {
       console.error("memo delete failed", e);
       alert("메모 삭제에 실패했습니다.");
     }
   };
 
+  // ── 카드 삭제 ──
   const handleDeleteCase = async () => {
     if (!confirm(`${c.caseNumber} 판례를 아카이브에서 삭제하시겠습니까?`)) return;
     try {
@@ -102,10 +241,99 @@ export default function ArchiveCaseCard({ uid, c, onDeleted, onMemosChanged }: P
     }
   };
 
+  // ── 별점 ──
+  const handleImportance = async (v: number) => {
+    try {
+      await updateDoc(docRef, { importance: v });
+      onUpdated(c.id, { importance: v });
+    } catch (e) {
+      console.error("importance update failed", e);
+    }
+  };
+
+  // ── 태그 ──
+  const handleAddTag = async () => {
+    const t = newTag.trim();
+    if (!t || tags.includes(t)) return;
+    try {
+      await updateDoc(docRef, { tags: arrayUnion(t) });
+      onUpdated(c.id, { tags: [...tags, t] });
+      setNewTag("");
+    } catch (e) {
+      console.error("tag add failed", e);
+    }
+  };
+  const handleRemoveTag = async (t: string) => {
+    try {
+      await updateDoc(docRef, { tags: arrayRemove(t) });
+      onUpdated(c.id, { tags: tags.filter(x => x !== t) });
+    } catch (e) {
+      console.error("tag remove failed", e);
+    }
+  };
+
+  // ── 하이라이트 ──
+  const captureSelection = (field: "rulingPoints" | "rulingRatio") => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) {
+      setPending(null);
+      return;
+    }
+    const text = sel.toString().trim();
+    if (!text || text.length < 2) {
+      setPending(null);
+      return;
+    }
+    const container = field === "rulingPoints" ? pointsRef.current : ratioRef.current;
+    if (!container) return;
+    const range = sel.getRangeAt(0);
+    if (!container.contains(range.commonAncestorContainer)) {
+      setPending(null);
+      return;
+    }
+    setPending({ text, field });
+  };
+
+  const addHighlight = async () => {
+    if (!pending) return;
+    const arr = highlights[pending.field];
+    if (arr.includes(pending.text)) {
+      setPending(null);
+      return;
+    }
+    const newHighlights: ArchiveHighlights = {
+      rulingPoints: [...highlights.rulingPoints],
+      rulingRatio: [...highlights.rulingRatio],
+    };
+    newHighlights[pending.field] = [...arr, pending.text];
+    try {
+      await updateDoc(docRef, { highlights: newHighlights });
+      onUpdated(c.id, { highlights: newHighlights });
+      window.getSelection()?.removeAllRanges();
+      setPending(null);
+    } catch (e) {
+      console.error("highlight add failed", e);
+      alert("하이라이트 추가에 실패했습니다.");
+    }
+  };
+
+  const removeHighlight = async (field: "rulingPoints" | "rulingRatio", text: string) => {
+    if (!confirm("이 하이라이트를 제거하시겠습니까?")) return;
+    const newHighlights: ArchiveHighlights = {
+      rulingPoints: [...highlights.rulingPoints],
+      rulingRatio: [...highlights.rulingRatio],
+    };
+    newHighlights[field] = newHighlights[field].filter(h => h !== text);
+    try {
+      await updateDoc(docRef, { highlights: newHighlights });
+      onUpdated(c.id, { highlights: newHighlights });
+    } catch (e) {
+      console.error("highlight remove failed", e);
+    }
+  };
+
   const points = (c.rulingPoints || "").trim();
   const ratio = (c.rulingRatio || "").trim();
-  const POINTS_LIMIT = 600;
-  const RATIO_LIMIT = 800;
 
   return (
     <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
@@ -118,6 +346,9 @@ export default function ArchiveCaseCard({ uid, c, onDeleted, onMemosChanged }: P
           <p className="text-[12px] text-zinc-400 mt-1">
             {[c.court, formatDate(c.date), c.caseName].filter(Boolean).join(" · ")}
           </p>
+          <div className="mt-2">
+            <StarRating value={importance} onChange={handleImportance} />
+          </div>
         </div>
         <button
           onClick={handleDeleteCase}
@@ -128,63 +359,148 @@ export default function ArchiveCaseCard({ uid, c, onDeleted, onMemosChanged }: P
         </button>
       </div>
 
-      {/* 본문 — 판시사항/판결요지 인라인 */}
-      <div className="px-5 py-4 space-y-4 text-[13px] leading-relaxed text-zinc-700">
-        {points ? (
-          <div>
-            <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-1.5">
-              판시사항
-            </div>
-            <div className="whitespace-pre-wrap">
-              {!expandedPoints && points.length > POINTS_LIMIT
-                ? points.slice(0, POINTS_LIMIT) + "…"
-                : points}
-            </div>
-            {points.length > POINTS_LIMIT && (
-              <button
-                onClick={() => setExpandedPoints(v => !v)}
-                className="mt-1 text-[12px] text-blue-600 hover:underline"
-              >
-                {expandedPoints ? "접기" : "더 보기"}
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="text-[12px] text-zinc-400 italic">판시사항 정보 없음</div>
-        )}
+      {/* 태그 */}
+      <div className="px-5 pt-3 pb-3 border-b border-zinc-100 flex flex-wrap items-center gap-1.5">
+        {tags.map(t => (
+          <span
+            key={t}
+            className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600"
+          >
+            #{t}
+            <button
+              onClick={() => handleRemoveTag(t)}
+              className="text-zinc-400 hover:text-red-500 leading-none"
+              title="태그 제거"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <div className="inline-flex items-center gap-1">
+          <input
+            value={newTag}
+            onChange={e => setNewTag(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void handleAddTag();
+              }
+            }}
+            placeholder="+ 태그"
+            className="h-6 px-2 text-[11px] border border-zinc-200 rounded-full outline-none focus:border-blue-400 transition-colors w-20"
+          />
+        </div>
+      </div>
 
-        {ratio ? (
-          <div>
-            <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-1.5">
-              판결요지
-            </div>
-            <div className="whitespace-pre-wrap">
-              {!expandedRatio && ratio.length > RATIO_LIMIT
-                ? ratio.slice(0, RATIO_LIMIT) + "…"
-                : ratio}
-            </div>
-            {ratio.length > RATIO_LIMIT && (
-              <button
-                onClick={() => setExpandedRatio(v => !v)}
-                className="mt-1 text-[12px] text-blue-600 hover:underline"
+      {/* 본문 — 판시사항 / 판결요지 (각각 접기 + 하이라이트) */}
+      <div className="px-5 py-4 space-y-4 text-[15px] leading-[1.7] text-zinc-800">
+        {/* 판시사항 */}
+        <div>
+          <button
+            onClick={() => setCollapsedPoints(v => !v)}
+            className="w-full flex items-center justify-between text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-1.5 hover:text-zinc-700 transition-colors"
+          >
+            <span>판시사항</span>
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`transition-transform ${collapsedPoints ? "" : "rotate-180"}`}
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {!collapsedPoints && (
+            points ? (
+              <div
+                ref={pointsRef}
+                onMouseUp={() => captureSelection("rulingPoints")}
+                onTouchEnd={() => captureSelection("rulingPoints")}
+                className="whitespace-pre-wrap selection:bg-blue-100"
               >
-                {expandedRatio ? "접기" : "더 보기"}
-              </button>
-            )}
+                {renderWithHighlights(
+                  points,
+                  highlights.rulingPoints,
+                  searchTerm,
+                  (h) => removeHighlight("rulingPoints", h),
+                )}
+              </div>
+            ) : (
+              <div className="text-[13px] text-zinc-400 italic">판시사항 정보 없음</div>
+            )
+          )}
+        </div>
+
+        {/* 판결요지 */}
+        <div>
+          <button
+            onClick={() => setCollapsedRatio(v => !v)}
+            className="w-full flex items-center justify-between text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-1.5 hover:text-zinc-700 transition-colors"
+          >
+            <span>판결요지</span>
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`transition-transform ${collapsedRatio ? "" : "rotate-180"}`}
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {!collapsedRatio && (
+            ratio ? (
+              <div
+                ref={ratioRef}
+                onMouseUp={() => captureSelection("rulingRatio")}
+                onTouchEnd={() => captureSelection("rulingRatio")}
+                className="whitespace-pre-wrap selection:bg-blue-100"
+              >
+                {renderWithHighlights(
+                  ratio,
+                  highlights.rulingRatio,
+                  searchTerm,
+                  (h) => removeHighlight("rulingRatio", h),
+                )}
+              </div>
+            ) : (
+              <div className="text-[13px] text-zinc-400 italic">판결요지 정보 없음</div>
+            )
+          )}
+        </div>
+
+        {pending && (
+          <div className="sticky bottom-3 z-10 flex justify-center">
+            <button
+              onClick={addHighlight}
+              className="px-4 h-9 bg-yellow-300 hover:bg-yellow-400 text-zinc-900 text-[12px] font-semibold rounded-full shadow-md transition-colors flex items-center gap-1.5"
+            >
+              <span>형광펜 적용</span>
+              <span className="text-[10px] opacity-60 max-w-[180px] truncate">
+                "{pending.text.slice(0, 30)}{pending.text.length > 30 ? "…" : ""}"
+              </span>
+            </button>
           </div>
-        ) : (
-          <div className="text-[12px] text-zinc-400 italic">판결요지 정보 없음</div>
         )}
       </div>
 
       {/* 메모 섹션 */}
       <div className="px-5 py-4 border-t border-zinc-100 bg-zinc-50/50">
         <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest mb-2">
-          메모 ({c.memos.length})
+          메모 ({memos.length})
         </div>
-        {c.memos.length > 0 && (
+        {memos.length > 0 && (
           <ul className="space-y-1.5 mb-3">
-            {[...c.memos]
+            {[...memos]
               .sort((a, b) => {
                 const at = (a.createdAt as { seconds?: number })?.seconds ?? 0;
                 const bt = (b.createdAt as { seconds?: number })?.seconds ?? 0;
