@@ -105,7 +105,7 @@ interface SearchItem {
   serialNo: string;
 }
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://case-generator-eight.vercel.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://case-generator.com";
 
 async function fetchLawGoKrUrl(url: string, timeoutMs = 20000): Promise<{ data: Record<string, unknown> | null; error?: string }> {
   try {

@@ -14,7 +14,7 @@ export interface CaseData {
 
 type ApiRecord = Record<string, string>;
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://case-generator-eight.vercel.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://case-generator.com";
 
 async function fetchJson(url: string): Promise<unknown> {
   try {

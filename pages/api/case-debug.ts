@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://case-generator-eight.vercel.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://case-generator.com";
 
 async function fetchRaw(url: string) {
   const res = await fetch(url, {
