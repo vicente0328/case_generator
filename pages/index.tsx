@@ -546,13 +546,16 @@ export default function Home() {
   }, [mode]);
 
   // My Archive 신규 기능 소개 배너
+  // - 영구 dismiss: '다시 보지 않기' 클릭 시에만 (localStorage)
+  // - 임시 숨김(× 또는 '지금 체험하기'): 현재 페이지 뷰만, 새로고침 시 다시 노출
   const [showArchiveIntro, setShowArchiveIntro] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const dismissed = localStorage.getItem("archiveIntroDismissedV2");
     if (!dismissed) setShowArchiveIntro(true);
   }, []);
-  const dismissArchiveIntro = () => {
+  const hideArchiveIntro = () => setShowArchiveIntro(false);
+  const dismissArchiveIntroPermanently = () => {
     setShowArchiveIntro(false);
     if (typeof window !== "undefined") localStorage.setItem("archiveIntroDismissedV2", "1");
   };
@@ -1093,7 +1096,7 @@ ${renderSectionsHtml(post.content as string || "")}
             <div className="absolute -bottom-16 -left-12 w-40 h-40 rounded-full bg-indigo-200/30 blur-3xl pointer-events-none" />
 
             <button
-              onClick={dismissArchiveIntro}
+              onClick={hideArchiveIntro}
               aria-label="닫기"
               className="absolute top-3 right-3 z-10 w-7 h-7 rounded-full text-zinc-400 hover:text-zinc-700 hover:bg-white/60 transition-colors flex items-center justify-center"
             >
@@ -1138,7 +1141,6 @@ ${renderSectionsHtml(post.content as string || "")}
                   onClick={() => {
                     if (!user) { setShowAuthModal(true); return; }
                     setMode("archive");
-                    dismissArchiveIntro();
                   }}
                   className="inline-flex items-center gap-1.5 h-10 px-5 bg-blue-900 hover:bg-blue-800 text-white text-[13px] font-semibold rounded-xl shadow-[0_2px_8px_rgba(30,64,175,0.25)] hover:shadow-[0_4px_12px_rgba(30,64,175,0.35)] transition-all"
                 >
@@ -1148,7 +1150,7 @@ ${renderSectionsHtml(post.content as string || "")}
                   </svg>
                 </button>
                 <button
-                  onClick={dismissArchiveIntro}
+                  onClick={dismissArchiveIntroPermanently}
                   className="text-[12px] text-zinc-400 hover:text-zinc-700 transition-colors"
                 >
                   다시 보지 않기
