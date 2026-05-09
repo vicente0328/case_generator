@@ -58,6 +58,7 @@ export default function MyArchive() {
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [duplicates, setDuplicates] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 초기 로드
@@ -112,6 +113,7 @@ export default function MyArchive() {
 
     setSubmitting(true);
     setReport(null);
+    setDuplicates([]);
     try {
       const res = await fetch("/api/case-bulk-lookup", {
         method: "POST",
@@ -215,6 +217,7 @@ export default function MyArchive() {
     setExtracting(true);
     setExtractError(null);
     setReport(null);
+    setDuplicates([]);
     try {
       const dataUrl = await fileToDataUrl(file);
       const res = await fetch("/api/extract-case-numbers", {
@@ -230,6 +233,10 @@ export default function MyArchive() {
       } else {
         // textarea 에 채워두고 사용자 확인 후 직접 list-up 하도록 둠
         setInput(numbers.join("\n"));
+        // 이미 아카이브에 있는 사건번호 표시 — 사용자가 제외 선택 가능
+        const existingIds = new Set(cases.map(c => c.id));
+        const dupes = numbers.filter(n => existingIds.has(normalizeId(n)));
+        setDuplicates(dupes);
       }
     } catch (e) {
       setExtractError(e instanceof Error ? e.message : "이미지 처리 중 오류가 발생했습니다.");
@@ -345,6 +352,40 @@ export default function MyArchive() {
               aria-label="닫기"
             >
               ×
+            </button>
+          </div>
+        )}
+        {duplicates.length > 0 && (
+          <div className="mb-3 px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-200 text-[12px] text-zinc-700">
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <span>
+                <span className="font-semibold text-zinc-900">{duplicates.length}건</span>이 이미 아카이브에 있습니다
+              </span>
+              <button
+                onClick={() => setDuplicates([])}
+                className="text-zinc-400 hover:text-zinc-700 leading-none"
+                aria-label="닫기"
+              >
+                ×
+              </button>
+            </div>
+            <div className="font-mono text-[11px] text-zinc-500 break-all mb-2">
+              {duplicates.join(", ")}
+            </div>
+            <button
+              onClick={() => {
+                const dupSet = new Set(duplicates.map(normalizeId));
+                const remaining = input
+                  .split(/[\n,;\s]+/)
+                  .map(s => s.trim())
+                  .filter(Boolean)
+                  .filter(n => !dupSet.has(normalizeId(n)));
+                setInput(remaining.join("\n"));
+                setDuplicates([]);
+              }}
+              className="h-7 px-2.5 text-[11px] font-medium text-zinc-700 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-md transition-colors"
+            >
+              중복 제외하고 채우기
             </button>
           </div>
         )}
