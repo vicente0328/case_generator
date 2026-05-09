@@ -319,31 +319,24 @@ async function scrapeGlaw(caseNum: string, normalizedNum: string): Promise<CaseD
   return result;
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "GET") return res.status(405).end();
+// 사건번호 정규화: 한글/숫자 이외 문자 제거 + 2자리 연도 → 4자리
+// 예) "2008. 다. 54877." → "2008다54877"
+// 예) "96다3982" → "1996다3982"
+export function normalizeCase(cn: string): string {
+  const s = cn.replace(/[^가-힣0-9]/g, "");
+  return s.replace(/^(\d{2})([가-힣])/, (_, yr, type) => {
+    const y = parseInt(yr, 10);
+    return `${y >= 90 ? 1900 + y : 2000 + y}${type}`;
+  });
+}
 
-  const { caseNumber } = req.query;
-  if (!caseNumber || typeof caseNumber !== "string") {
-    return res.status(400).json({ error: "사건번호를 입력해 주세요." });
-  }
+export type LookupResult =
+  | { ok: true; data: CaseData }
+  | { ok: false; status: number; error: string };
 
-  const oc = process.env.LAW_OC;
-  if (!oc) {
-    return res.status(500).json({ error: "법제처 OC 값이 설정되지 않았습니다." });
-  }
-
-  const trimmed = caseNumber.trim();
-
-  // 사건번호 정규화: 한글/숫자 이외 문자 제거 + 2자리 연도 → 4자리
-  // 예) "2008. 다. 54877." → "2008다54877"
-  // 예) "96다3982" → "1996다3982"
-  function normalizeCase(cn: string): string {
-    const s = cn.replace(/[^가-힣0-9]/g, "");
-    return s.replace(/^(\d{2})([가-힣])/, (_, yr, type) => {
-      const y = parseInt(yr, 10);
-      return `${y >= 90 ? 1900 + y : 2000 + y}${type}`;
-    });
-  }
+export async function lookupOne(input: string, oc: string): Promise<LookupResult> {
+  const trimmed = input.trim();
+  if (!trimmed) return { ok: false, status: 400, error: "사건번호를 입력해 주세요." };
 
   const normalized = normalizeCase(trimmed);
 
@@ -353,7 +346,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log("[detc] 헌재 결정례 검색:", normalized);
 
       async function searchDetc(query: string): Promise<ApiRecord[]> {
-        const url = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc!)}&target=detc&type=JSON&query=${query}&display=10`;
+        const url = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc)}&target=detc&type=JSON&query=${query}&display=10`;
         let data = await fetchJson(url);
         if (!data) data = await fetchJson(url.replace("https://", "http://"));
         return data ? extractDetcItems(data) : [];
@@ -378,9 +371,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       if (!detcFound) {
-        return res.status(404).json({
+        return {
+          ok: false,
+          status: 404,
           error: `'${trimmed}'에 해당하는 헌법재판소 결정례를 찾지 못했습니다.`,
-        });
+        };
       }
 
       console.log("[detc] found:", detcFound["사건번호"], detcFound["사건명"]);
@@ -391,38 +386,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         "";
 
       if (detcSerialNo) {
-        const detailUrl = `https://www.law.go.kr/DRF/lawService.do?OC=${encodeURIComponent(oc!)}&target=detc&ID=${detcSerialNo}&type=JSON`;
+        const detailUrl = `https://www.law.go.kr/DRF/lawService.do?OC=${encodeURIComponent(oc)}&target=detc&ID=${detcSerialNo}&type=JSON`;
         let detailData = await fetchJson(detailUrl);
         if (!detailData) detailData = await fetchJson(detailUrl.replace("https://", "http://"));
 
         const detail = extractDetcDetail(detailData);
         if (detail) {
-          return res.status(200).json({
-            caseNumber: dig(detail, "사건번호") || trimmed,
-            caseName: dig(detail, "사건명") || detcFound["사건명"] || "",
-            court: "헌법재판소",
-            date: dig(detail, "종국일자") || String(detcFound["종국일자"] || ""),
-            rulingPoints: stripHtml(dig(detail, "판시사항") || ""),
-            rulingRatio: stripHtml(dig(detail, "결정요지") || ""),
-            references: dig(detail, "참조조문") || "",
-            fullText: stripHtml(dig(detail, "전문") || ""),
-            serialNo: String(detcSerialNo),
-          } as CaseData);
+          return {
+            ok: true,
+            data: {
+              caseNumber: dig(detail, "사건번호") || trimmed,
+              caseName: dig(detail, "사건명") || detcFound["사건명"] || "",
+              court: "헌법재판소",
+              date: dig(detail, "종국일자") || String(detcFound["종국일자"] || ""),
+              rulingPoints: stripHtml(dig(detail, "판시사항") || ""),
+              rulingRatio: stripHtml(dig(detail, "결정요지") || ""),
+              references: dig(detail, "참조조문") || "",
+              fullText: stripHtml(dig(detail, "전문") || ""),
+              serialNo: String(detcSerialNo),
+            },
+          };
         }
       }
 
       // fallback: 검색 결과만으로 응답
-      return res.status(200).json({
-        caseNumber: detcFound["사건번호"] || trimmed,
-        caseName: detcFound["사건명"] || "",
-        court: "헌법재판소",
-        date: String(detcFound["종국일자"] || ""),
-        rulingPoints: stripHtml(detcFound["판시사항"] || ""),
-        rulingRatio: stripHtml(detcFound["결정요지"] || ""),
-        references: "",
-        fullText: "",
-        serialNo: String(detcSerialNo),
-      } as CaseData);
+      return {
+        ok: true,
+        data: {
+          caseNumber: detcFound["사건번호"] || trimmed,
+          caseName: detcFound["사건명"] || "",
+          court: "헌법재판소",
+          date: String(detcFound["종국일자"] || ""),
+          rulingPoints: stripHtml(detcFound["판시사항"] || ""),
+          rulingRatio: stripHtml(detcFound["결정요지"] || ""),
+          references: "",
+          fullText: "",
+          serialNo: String(detcSerialNo),
+        },
+      };
     }
     // ─────────────────────────────────────────────────────────────────────
 
@@ -430,7 +431,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // nb=2008다54877 형태로 사건번호 전용 검색
     async function searchByNb(nb: string): Promise<ApiRecord[]> {
       // nb 파라미터는 한글을 URL 인코딩하면 법제처 서버가 인식 못함 — 그대로 전달
-      const url = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc!)}&target=prec&type=JSON&nb=${nb}&display=5`;
+      const url = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc)}&target=prec&type=JSON&nb=${nb}&display=5`;
       let data = await fetchJson(url);
       if (!data) data = await fetchJson(url.replace("https://", "http://"));
       return data ? extractItems(data) : [];
@@ -457,7 +458,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // nb 검색 실패 시 query 파라미터로 fallback (결과는 반드시 정확 매칭만 사용)
     if (!found) {
-      const queryUrl = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc!)}&target=prec&type=JSON&query=${encodeURIComponent(normalized !== trimmed ? trimmed : normalized)}&display=30`;
+      const queryUrl = `https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(oc)}&target=prec&type=JSON&query=${encodeURIComponent(normalized !== trimmed ? trimmed : normalized)}&display=30`;
       let qData = await fetchJson(queryUrl);
       if (!qData) qData = await fetchJson(queryUrl.replace("https://", "http://"));
       if (qData) found = matchExact(extractItems(qData));
@@ -467,16 +468,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!found) {
       const glawResult = await scrapeGlaw(trimmed, normalized);
       if (glawResult) {
-        return res.status(200).json(glawResult);
+        return { ok: true, data: glawResult };
       }
 
       const year = parseInt(normalized.match(/^(\d{4})/)?.[1] ?? "0", 10);
       const oldCase = year > 0 && year < 2000;
-      return res.status(404).json({
+      return {
+        ok: false,
+        status: 404,
         error: oldCase
           ? `'${trimmed}'에 해당하는 판례를 찾지 못했습니다. 법제처 및 대법원 종합법률정보에서 확인되지 않는 판례입니다.`
           : `'${trimmed}'에 해당하는 판례를 찾지 못했습니다.`,
-      });
+      };
     }
 
     console.log("Search result keys:", Object.keys(found));
@@ -510,17 +513,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           extractFromFullText(fullText, "판결요지")
         );
 
-        return res.status(200).json({
-          caseNumber: dig(detail, "사건번호", "caseNo") || found["사건번호"] || trimmed,
-          caseName: dig(detail, "사건명", "caseNm") || found["사건명"] || "",
-          court: dig(detail, "법원명", "courtNm") || found["법원명"] || "",
-          date: dig(detail, "선고일자", "judmnAdjYd") || String(found["선고일자"] || ""),
-          rulingPoints,
-          rulingRatio,
-          references: dig(detail, "참조조문", "refLaw"),
-          fullText,
-          serialNo,
-        } as CaseData);
+        return {
+          ok: true,
+          data: {
+            caseNumber: dig(detail, "사건번호", "caseNo") || found["사건번호"] || trimmed,
+            caseName: dig(detail, "사건명", "caseNm") || found["사건명"] || "",
+            court: dig(detail, "법원명", "courtNm") || found["법원명"] || "",
+            date: dig(detail, "선고일자", "judmnAdjYd") || String(found["선고일자"] || ""),
+            rulingPoints,
+            rulingRatio,
+            references: dig(detail, "참조조문", "refLaw"),
+            fullText,
+            serialNo,
+          },
+        };
       }
     }
 
@@ -537,19 +543,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ""
     );
 
-    return res.status(200).json({
-      caseNumber: found["사건번호"] || trimmed,
-      caseName: found["사건명"] || "",
-      court: found["법원명"] || "",
-      date: String(found["선고일자"] || ""),
-      rulingPoints,
-      rulingRatio,
-      references: "",
-      fullText,
-      serialNo,
-    } as CaseData);
+    return {
+      ok: true,
+      data: {
+        caseNumber: found["사건번호"] || trimmed,
+        caseName: found["사건명"] || "",
+        court: found["법원명"] || "",
+        date: String(found["선고일자"] || ""),
+        rulingPoints,
+        rulingRatio,
+        references: "",
+        fullText,
+        serialNo,
+      },
+    };
   } catch (err) {
     console.error("case-lookup error:", err);
-    return res.status(500).json({ error: "판례 조회 중 오류가 발생했습니다." });
+    return { ok: false, status: 500, error: "판례 조회 중 오류가 발생했습니다." };
   }
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "GET") return res.status(405).end();
+
+  const { caseNumber } = req.query;
+  if (!caseNumber || typeof caseNumber !== "string") {
+    return res.status(400).json({ error: "사건번호를 입력해 주세요." });
+  }
+
+  const oc = process.env.LAW_OC;
+  if (!oc) {
+    return res.status(500).json({ error: "법제처 OC 값이 설정되지 않았습니다." });
+  }
+
+  const result = await lookupOne(caseNumber, oc);
+  if (result.ok) return res.status(200).json(result.data);
+  return res.status(result.status).json({ error: result.error });
 }

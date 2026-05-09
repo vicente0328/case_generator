@@ -11,6 +11,7 @@ import AdminExamLikelyList from "@/components/AdminExamLikelyList";
 import AdminPromptEditor from "@/components/AdminPromptEditor";
 import AuthModal from "@/components/AuthModal";
 import RulingPreviewModal from "@/components/RulingPreviewModal";
+import MyArchive from "@/components/MyArchive";
 import { type LawArea, classifyLawArea } from "@/lib/classifyLawArea";
 
 const ADMIN_EMAIL = "admin@casegenerator.com";
@@ -529,6 +530,21 @@ export default function Home() {
   const isAdmin = user?.email === ADMIN_EMAIL;
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  const [mode, setMode] = useState<"generator" | "archive">("generator");
+  // localStorage 복원 (마운트 후)
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("homeMode") : null;
+    if (saved === "archive" || saved === "generator") setMode(saved);
+  }, []);
+  // 비로그인 사용자는 archive 모드 사용 불가 → 자동으로 generator로 복귀
+  useEffect(() => {
+    if (!user && mode === "archive") setMode("generator");
+  }, [user, mode]);
+  // 모드 전환 시 localStorage 저장
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("homeMode", mode);
+  }, [mode]);
+
   const [activeTab, setActiveTab] = useState<LawArea>("민사법");
   const [step, setStep] = useState<Step>("input");
   const [input, setInput] = useState("");
@@ -1046,12 +1062,47 @@ ${renderSectionsHtml(post.content as string || "")}
       <div className="max-w-[800px] mx-auto px-6">
 
         {/* 헤더 텍스트 */}
-        <div className="pt-12 pb-8 text-center">
-          <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 mb-1.5">Case Generator</h1>
-          <p className="text-[14px] text-zinc-400">사건번호로 변시 사례형 문제를 생성합니다</p>
+        <div className="pt-12 pb-6 text-center">
+          <h1 className="text-[26px] font-bold tracking-tight text-zinc-900 mb-1.5">
+            {mode === "archive" ? "My Archive" : "Case Generator"}
+          </h1>
+          <p className="text-[14px] text-zinc-400">
+            {mode === "archive"
+              ? "사건번호를 입력해 판시사항·판결요지를 내 아카이브로 저장합니다"
+              : "사건번호로 변시 사례형 문제를 생성합니다"}
+          </p>
         </div>
 
+        {/* 모드 토글 */}
+        <div className="flex gap-1 mb-6 bg-white border border-zinc-100 rounded-xl p-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)] max-w-sm mx-auto">
+          <button
+            onClick={() => setMode("generator")}
+            className={`flex-1 py-2 text-[13px] rounded-lg transition-colors ${
+              mode === "generator"
+                ? "font-semibold text-blue-900 bg-blue-50"
+                : "font-medium text-zinc-500 hover:text-zinc-800"
+            }`}
+          >
+            Case Generator
+          </button>
+          <button
+            onClick={() => {
+              if (!user) { setShowAuthModal(true); return; }
+              setMode("archive");
+            }}
+            className={`flex-1 py-2 text-[13px] rounded-lg transition-colors ${
+              mode === "archive"
+                ? "font-semibold text-blue-900 bg-blue-50"
+                : "font-medium text-zinc-500 hover:text-zinc-800"
+            }`}
+          >
+            My Archive
+          </button>
+        </div>
 
+        {mode === "archive" && <MyArchive />}
+
+        {mode === "generator" && (<>
         {/* 법역 탭 */}
         <div className="flex gap-1 mb-6 bg-white border border-zinc-100 rounded-xl p-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           {(["민사법", "공법", "형사법"] as LawArea[]).map(tab => (
@@ -1706,6 +1757,7 @@ ${renderSectionsHtml(post.content as string || "")}
         )}
 
         <div className="h-20" />
+        </>)}
       </div>
     </Layout>
 
