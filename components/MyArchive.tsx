@@ -193,6 +193,7 @@ export default function MyArchive() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkCollapse, setBulkCollapse] = useState<{ v: number; collapsed: boolean }>({ v: 0, collapsed: false });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 초기 로드
@@ -727,17 +728,41 @@ export default function MyArchive() {
       {!loading && filtered.length > 0 && (
         <div className="flex items-center justify-between gap-2">
           {!selectMode ? (
-            <button
-              onClick={() => setSelectMode(true)}
-              className="text-[12px] font-medium text-zinc-600 hover:text-zinc-900 transition-colors inline-flex items-center gap-1.5 h-8 px-3 rounded-lg hover:bg-zinc-100"
-              title="여러 판례 선택"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <polyline points="9 11 12 14 17 9"/>
-              </svg>
-              선택
-            </button>
+            <>
+              <button
+                onClick={() => setSelectMode(true)}
+                className="text-[12px] font-medium text-zinc-600 hover:text-zinc-900 transition-colors inline-flex items-center gap-1.5 h-8 px-3 rounded-lg hover:bg-zinc-100"
+                title="여러 판례 선택"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <polyline points="9 11 12 14 17 9"/>
+                </svg>
+                선택
+              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setBulkCollapse(prev => ({ v: prev.v + 1, collapsed: false }))}
+                  className="text-[12px] font-medium text-zinc-600 hover:text-zinc-900 transition-colors inline-flex items-center gap-1.5 h-8 px-3 rounded-lg hover:bg-zinc-100"
+                  title="모든 판시사항·판결요지 펼치기"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                  모두 펼치기
+                </button>
+                <button
+                  onClick={() => setBulkCollapse(prev => ({ v: prev.v + 1, collapsed: true }))}
+                  className="text-[12px] font-medium text-zinc-600 hover:text-zinc-900 transition-colors inline-flex items-center gap-1.5 h-8 px-3 rounded-lg hover:bg-zinc-100"
+                  title="모든 판시사항·판결요지 접기"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="18 15 12 9 6 15"/>
+                  </svg>
+                  모두 접기
+                </button>
+              </div>
+            </>
           ) : (
             <>
               <div className="flex items-center gap-2 flex-wrap">
@@ -828,6 +853,7 @@ export default function MyArchive() {
               selectMode={selectMode}
               isSelected={selected.has(c.id)}
               onToggleSelect={toggleSelect}
+              bulkCollapse={bulkCollapse}
             />
           ))
         )}

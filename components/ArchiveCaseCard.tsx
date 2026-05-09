@@ -65,6 +65,7 @@ interface Props {
   selectMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: string) => void;
+  bulkCollapse?: { v: number; collapsed: boolean };
 }
 
 function formatDate(d?: string): string {
@@ -217,11 +218,19 @@ export default function ArchiveCaseCard({
   selectMode = false,
   isSelected = false,
   onToggleSelect,
+  bulkCollapse,
 }: Props) {
   const [newMemo, setNewMemo] = useState("");
   const [busy, setBusy] = useState(false);
   const [collapsedPoints, setCollapsedPoints] = useState(false);
   const [collapsedRatio, setCollapsedRatio] = useState(false);
+
+  // 부모의 일괄 접기/펼치기 신호 — version 이 바뀔 때마다 적용 (각 카드의 개별 토글은 이후 자유롭게 가능)
+  useEffect(() => {
+    if (!bulkCollapse || bulkCollapse.v === 0) return;
+    setCollapsedPoints(bulkCollapse.collapsed);
+    setCollapsedRatio(bulkCollapse.collapsed);
+  }, [bulkCollapse]);
   const [pending, setPending] = useState<
     {
       text: string;
@@ -586,8 +595,10 @@ export default function ArchiveCaseCard({
           (() => {
             const BTN_H = 36;
             const GAP = 8;
-            // 위쪽 공간이 부족하면 선택 영역 아래로 뒤집기
-            const flipBelow = pending.rect.top < BTN_H + GAP + 4;
+            // 모바일(터치 기기)에서는 iOS/Android 시스템 callout 과 겹치지 않도록 항상 아래로
+            const isTouch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+            // 데스크톱: 위쪽 공간이 부족하면 아래로 뒤집기
+            const flipBelow = isTouch || pending.rect.top < BTN_H + GAP + 4;
             const top = flipBelow
               ? pending.rect.bottom + window.scrollY + GAP
               : pending.rect.top + window.scrollY - BTN_H - GAP;
