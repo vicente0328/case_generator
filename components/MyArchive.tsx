@@ -34,7 +34,7 @@ const AREA_STYLE: Record<LawArea, { tab: string; tabActive: string; badge: strin
   },
 };
 
-type SortMode = "dateDesc" | "addedDesc";
+type SortMode = "dateDesc" | "addedDesc" | "importanceDesc";
 
 function normalizeId(cn: string): string {
   // 사건번호를 doc ID로 사용 가능한 형태로: 한글/숫자만 + 2자리 연도 → 4자리
@@ -204,6 +204,11 @@ export default function MyArchive() {
         )
       : tagged;
     const sorted = [...matched].sort((a, b) => {
+      if (sortMode === "importanceDesc") {
+        const ai = a.importance ?? 0;
+        const bi = b.importance ?? 0;
+        if (ai !== bi) return bi - ai;
+      }
       if (sortMode === "dateDesc") {
         const ad = (a.date || "").replace(/\D/g, "");
         const bd = (b.date || "").replace(/\D/g, "");
@@ -300,6 +305,7 @@ export default function MyArchive() {
           className="h-9 px-3 text-[13px] border border-zinc-200 rounded-lg outline-none focus:border-blue-400 transition-colors bg-white"
         >
           <option value="dateDesc">선고일 최신순</option>
+          <option value="importanceDesc">중요도 높은 순</option>
           <option value="addedDesc">추가 최신순</option>
         </select>
       </div>
