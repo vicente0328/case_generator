@@ -64,7 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
     const result = await model.generateContent([
       { inlineData: { mimeType: parsed.mimeType, data: parsed.base64 } },
       { text: PROMPT },
@@ -87,6 +87,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ caseNumbers: valid } satisfies ExtractResponse);
   } catch (err) {
     console.error("extract-case-numbers error:", err);
-    return res.status(500).json({ error: "사건번호 추출 중 오류가 발생했습니다." });
+    const detail = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: `사건번호 추출 중 오류가 발생했습니다: ${detail}` });
   }
 }
