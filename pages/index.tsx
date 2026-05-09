@@ -549,12 +549,12 @@ export default function Home() {
   const [showArchiveIntro, setShowArchiveIntro] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const dismissed = localStorage.getItem("archiveIntroDismissedV1");
+    const dismissed = localStorage.getItem("archiveIntroDismissedV2");
     if (!dismissed) setShowArchiveIntro(true);
   }, []);
   const dismissArchiveIntro = () => {
     setShowArchiveIntro(false);
-    if (typeof window !== "undefined") localStorage.setItem("archiveIntroDismissedV1", "1");
+    if (typeof window !== "undefined") localStorage.setItem("archiveIntroDismissedV2", "1");
   };
 
   const [activeTab, setActiveTab] = useState<LawArea>("민사법");
