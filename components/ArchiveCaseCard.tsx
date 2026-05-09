@@ -17,9 +17,26 @@ export interface ArchiveMemo {
   createdAt: Timestamp | { seconds: number; nanoseconds?: number } | null;
 }
 
+// 신규: { text, offset } 객체. 레거시: 문자열 — 본문 내 모든 occurrence 매칭(과거 동작).
+export type HighlightItem = string | { text: string; offset: number };
+
 export interface ArchiveHighlights {
-  rulingPoints: string[];
-  rulingRatio: string[];
+  rulingPoints: HighlightItem[];
+  rulingRatio: HighlightItem[];
+}
+
+function offsetInPlainText(container: Element, range: Range): number {
+  let offset = 0;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let node: Node | null = walker.nextNode();
+  while (node) {
+    if (node === range.startContainer) {
+      return offset + range.startOffset;
+    }
+    offset += (node as Text).length;
+    node = walker.nextNode();
+  }
+  return -1;
 }
 
 export interface ArchiveCase {
@@ -75,24 +92,34 @@ function formatMemoDate(t: ArchiveMemo["createdAt"]): string {
 // flag bitmask: 1 = highlight, 2 = search match
 function renderWithHighlights(
   text: string,
-  highlights: string[],
+  highlights: HighlightItem[],
   searchTerm: string,
-  onHighlightClick: (h: string) => void,
+  onHighlightClick: (h: HighlightItem) => void,
 ): ReactNode[] {
   if (!text) return [];
 
   const flags = new Array<number>(text.length).fill(0);
-  // 영구 하이라이트 매치 — 모든 occurrence
-  const highlightRanges: { start: number; end: number; text: string }[] = [];
+  const highlightRanges: { start: number; end: number; entry: HighlightItem }[] = [];
   for (const h of highlights) {
-    if (!h) continue;
-    let idx = 0;
-    while (true) {
-      const found = text.indexOf(h, idx);
-      if (found === -1) break;
-      for (let i = found; i < found + h.length; i++) flags[i] |= 1;
-      highlightRanges.push({ start: found, end: found + h.length, text: h });
-      idx = found + h.length;
+    if (typeof h === "string") {
+      // 레거시: 본문 내 모든 occurrence (offset 정보가 없는 과거 데이터)
+      if (!h) continue;
+      let idx = 0;
+      while (true) {
+        const found = text.indexOf(h, idx);
+        if (found === -1) break;
+        for (let i = found; i < found + h.length; i++) flags[i] |= 1;
+        highlightRanges.push({ start: found, end: found + h.length, entry: h });
+        idx = found + h.length;
+      }
+    } else {
+      // 신규: 저장된 offset 위치만 매칭 (본문이 바뀌었으면 무시)
+      if (!h.text || h.offset < 0 || h.offset + h.text.length > text.length) continue;
+      if (text.slice(h.offset, h.offset + h.text.length) !== h.text) continue;
+      const start = h.offset;
+      const end = start + h.text.length;
+      for (let i = start; i < end; i++) flags[i] |= 1;
+      highlightRanges.push({ start, end, entry: h });
     }
   }
   // 검색어 매치 — 대소문자 무시
@@ -136,7 +163,7 @@ function renderWithHighlights(
             (f & 1) && containingHighlight
               ? (e) => {
                   e.stopPropagation();
-                  onHighlightClick(containingHighlight.text);
+                  onHighlightClick(containingHighlight.entry);
                 }
               : undefined
           }
@@ -199,6 +226,7 @@ export default function ArchiveCaseCard({
     {
       text: string;
       field: "rulingPoints" | "rulingRatio";
+      offset: number;
       rect: { top: number; bottom: number; left: number; width: number };
     } | null
   >(null);
@@ -290,56 +318,69 @@ export default function ArchiveCaseCard({
   };
 
   // ── 하이라이트 ──
-  const captureSelection = (field: "rulingPoints" | "rulingRatio") => {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) {
-      setPending(null);
-      return;
-    }
-    const text = sel.toString().trim();
-    if (!text || text.length < 2) {
-      setPending(null);
-      return;
-    }
-    const container = field === "rulingPoints" ? pointsRef.current : ratioRef.current;
-    if (!container) return;
-    const range = sel.getRangeAt(0);
-    if (!container.contains(range.commonAncestorContainer)) {
-      setPending(null);
-      return;
-    }
-    const r = range.getBoundingClientRect();
-    setPending({
-      text,
-      field,
-      rect: { top: r.top, bottom: r.bottom, left: r.left, width: r.width },
-    });
-  };
-
-  // 팝오버 밖 클릭 시 자동 닫기
+  // selection 변경을 한 곳에서 추적 — 데스크톱(드래그)·모바일(handle 조정) 모두 실시간 반영
   useEffect(() => {
-    if (!pending) return;
-    const onMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest("[data-highlight-popover]")) return;
-      setPending(null);
+    let frame = 0;
+    const onChange = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+          setPending(null);
+          return;
+        }
+        const text = sel.toString().trim();
+        if (text.length < 2) {
+          setPending(null);
+          return;
+        }
+        const range = sel.getRangeAt(0);
+        const inPoints = pointsRef.current?.contains(range.commonAncestorContainer);
+        const inRatio = ratioRef.current?.contains(range.commonAncestorContainer);
+        if (!inPoints && !inRatio) {
+          setPending(null);
+          return;
+        }
+        const field: "rulingPoints" | "rulingRatio" = inPoints ? "rulingPoints" : "rulingRatio";
+        const container = (inPoints ? pointsRef.current : ratioRef.current)!;
+        const offset = offsetInPlainText(container, range);
+        if (offset < 0) {
+          setPending(null);
+          return;
+        }
+        const r = range.getBoundingClientRect();
+        setPending({
+          text,
+          field,
+          offset,
+          rect: { top: r.top, bottom: r.bottom, left: r.left, width: r.width },
+        });
+      });
     };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [pending]);
+    document.addEventListener("selectionchange", onChange);
+    return () => {
+      document.removeEventListener("selectionchange", onChange);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
 
   const addHighlight = async () => {
     if (!pending) return;
     const arr = highlights[pending.field];
-    if (arr.includes(pending.text)) {
+    const exists = arr.some(h =>
+      typeof h !== "string" && h.text === pending.text && h.offset === pending.offset,
+    );
+    if (exists) {
       setPending(null);
       return;
     }
+    const newEntry: HighlightItem = { text: pending.text, offset: pending.offset };
     const newHighlights: ArchiveHighlights = {
       rulingPoints: [...highlights.rulingPoints],
       rulingRatio: [...highlights.rulingRatio],
     };
-    newHighlights[pending.field] = [...arr, pending.text];
+    newHighlights[pending.field] = [...arr, newEntry];
     try {
       await updateDoc(docRef, { highlights: newHighlights });
       onUpdated(c.id, { highlights: newHighlights });
@@ -351,13 +392,19 @@ export default function ArchiveCaseCard({
     }
   };
 
-  const removeHighlight = async (field: "rulingPoints" | "rulingRatio", text: string) => {
+  const removeHighlight = async (field: "rulingPoints" | "rulingRatio", entry: HighlightItem) => {
     if (!confirm("이 하이라이트를 제거하시겠습니까?")) return;
     const newHighlights: ArchiveHighlights = {
       rulingPoints: [...highlights.rulingPoints],
       rulingRatio: [...highlights.rulingRatio],
     };
-    newHighlights[field] = newHighlights[field].filter(h => h !== text);
+    newHighlights[field] = newHighlights[field].filter(h => {
+      if (typeof h === "string" && typeof entry === "string") return h !== entry;
+      if (typeof h !== "string" && typeof entry !== "string") {
+        return !(h.text === entry.text && h.offset === entry.offset);
+      }
+      return true;
+    });
     try {
       await updateDoc(docRef, { highlights: newHighlights });
       onUpdated(c.id, { highlights: newHighlights });
@@ -478,8 +525,6 @@ export default function ArchiveCaseCard({
             points ? (
               <div
                 ref={pointsRef}
-                onMouseUp={() => captureSelection("rulingPoints")}
-                onTouchEnd={() => captureSelection("rulingPoints")}
                 className="whitespace-pre-wrap selection:bg-blue-100"
               >
                 {renderWithHighlights(
@@ -520,8 +565,6 @@ export default function ArchiveCaseCard({
             ratio ? (
               <div
                 ref={ratioRef}
-                onMouseUp={() => captureSelection("rulingRatio")}
-                onTouchEnd={() => captureSelection("rulingRatio")}
                 className="whitespace-pre-wrap selection:bg-blue-100"
               >
                 {renderWithHighlights(
@@ -557,11 +600,13 @@ export default function ArchiveCaseCard({
               <div
                 data-highlight-popover
                 style={{ position: "absolute", top, left, transform: "translateX(-50%)", zIndex: 50 }}
+                className="animate-in fade-in zoom-in-95 duration-100 ease-out will-change-transform"
               >
                 <button
                   onMouseDown={e => e.preventDefault()}
+                  onTouchStart={e => e.stopPropagation()}
                   onClick={addHighlight}
-                  className="px-3.5 h-9 bg-yellow-300 hover:bg-yellow-400 text-zinc-900 text-[12px] font-semibold rounded-full shadow-lg ring-1 ring-yellow-500/20 transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                  className="px-3.5 h-9 bg-yellow-300 hover:bg-yellow-400 active:bg-yellow-400 text-zinc-900 text-[12px] font-semibold rounded-full shadow-lg ring-1 ring-yellow-500/20 transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 11l-6 6v3h3l6-6"/>

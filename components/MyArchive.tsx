@@ -12,7 +12,7 @@ import {
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { classifyLawArea, type LawArea } from "@/lib/classifyLawArea";
-import ArchiveCaseCard, { type ArchiveCase } from "./ArchiveCaseCard";
+import ArchiveCaseCard, { type ArchiveCase, type HighlightItem } from "./ArchiveCaseCard";
 import type { BulkLookupResponse } from "@/pages/api/case-bulk-lookup";
 
 const AREAS: LawArea[] = ["민사법", "공법", "형사법"];
@@ -52,18 +52,24 @@ function escHtml(s: string): string {
   );
 }
 
-function applyHighlightsHtml(text: string, highlights: string[]): string {
+function applyHighlightsHtml(text: string, highlights: HighlightItem[]): string {
   if (!text) return "";
   if (!highlights || highlights.length === 0) return escHtml(text);
   const flags = new Array<number>(text.length).fill(0);
   for (const h of highlights) {
-    if (!h) continue;
-    let idx = 0;
-    while (true) {
-      const found = text.indexOf(h, idx);
-      if (found === -1) break;
-      for (let i = found; i < found + h.length; i++) flags[i] = 1;
-      idx = found + h.length;
+    if (typeof h === "string") {
+      if (!h) continue;
+      let idx = 0;
+      while (true) {
+        const found = text.indexOf(h, idx);
+        if (found === -1) break;
+        for (let i = found; i < found + h.length; i++) flags[i] = 1;
+        idx = found + h.length;
+      }
+    } else {
+      if (!h.text || h.offset < 0 || h.offset + h.text.length > text.length) continue;
+      if (text.slice(h.offset, h.offset + h.text.length) !== h.text) continue;
+      for (let i = h.offset; i < h.offset + h.text.length; i++) flags[i] = 1;
     }
   }
   let out = "";
