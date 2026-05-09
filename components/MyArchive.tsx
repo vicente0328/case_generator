@@ -215,7 +215,6 @@ export default function MyArchive() {
     setExtracting(true);
     setExtractError(null);
     setReport(null);
-    let numbers: string[] = [];
     try {
       const dataUrl = await fileToDataUrl(file);
       const res = await fetch("/api/extract-case-numbers", {
@@ -225,22 +224,17 @@ export default function MyArchive() {
       });
       const data = (await res.json()) as { caseNumbers?: string[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? "추출 실패");
-      numbers = data.caseNumbers ?? [];
+      const numbers = data.caseNumbers ?? [];
       if (numbers.length === 0) {
         setExtractError("사건번호를 찾지 못했습니다. 다시 찍거나 직접 입력해주세요.");
       } else {
-        // textarea 채우고 곧바로 bulk-lookup 단계로
+        // textarea 에 채워두고 사용자 확인 후 직접 list-up 하도록 둠
         setInput(numbers.join("\n"));
       }
     } catch (e) {
       setExtractError(e instanceof Error ? e.message : "이미지 처리 중 오류가 발생했습니다.");
     } finally {
-      // OCR 단계 종료 — 이후 bulk-lookup 은 submitting 상태가 담당
       setExtracting(false);
-    }
-    if (numbers.length > 0) {
-      // state 비동기 갱신 회피 위해 추출 결과 명시 전달
-      await handleSubmit(numbers);
     }
   };
 
