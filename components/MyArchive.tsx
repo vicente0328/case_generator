@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   doc,
@@ -56,6 +56,9 @@ export default function MyArchive() {
   const [sortMode, setSortMode] = useState<SortMode>("dateDesc");
   const [activeArea, setActiveArea] = useState<LawArea>("민사법");
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 초기 로드
   useEffect(() => {
@@ -100,10 +103,9 @@ export default function MyArchive() {
     };
   }, [user]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (overrideTokens?: string[]) => {
     if (!user || submitting) return;
-    const tokens = input
-      .split(/[\n,;\s]+/)
+    const tokens = (overrideTokens ?? input.split(/[\n,;\s]+/))
       .map(s => s.trim())
       .filter(Boolean);
     if (tokens.length === 0) return;
@@ -179,6 +181,69 @@ export default function MyArchive() {
     setCases(prev => prev.map(c => (c.id === id ? { ...c, ...partial } : c)));
   };
 
+  // 이미지 → 1500px 리사이즈 → JPEG base64 (data URL)
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 1500;
+          const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
+          const w = Math.round(img.width * ratio);
+          const h = Math.round(img.height * ratio);
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            reject(new Error("canvas context 실패"));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        };
+        img.onerror = () => reject(new Error("이미지 로드 실패"));
+        img.src = reader.result as string;
+      };
+      reader.onerror = () => reject(new Error("파일 읽기 실패"));
+      reader.readAsDataURL(file);
+    });
+
+  const handleImageExtract = async (file: File) => {
+    if (!user || extracting || submitting) return;
+    setExtracting(true);
+    setExtractError(null);
+    setReport(null);
+    let numbers: string[] = [];
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const res = await fetch("/api/extract-case-numbers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+      const data = (await res.json()) as { caseNumbers?: string[]; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "추출 실패");
+      numbers = data.caseNumbers ?? [];
+      if (numbers.length === 0) {
+        setExtractError("사건번호를 찾지 못했습니다. 다시 찍거나 직접 입력해주세요.");
+      } else {
+        // textarea 채우고 곧바로 bulk-lookup 단계로
+        setInput(numbers.join("\n"));
+      }
+    } catch (e) {
+      setExtractError(e instanceof Error ? e.message : "이미지 처리 중 오류가 발생했습니다.");
+    } finally {
+      // OCR 단계 종료 — 이후 bulk-lookup 은 submitting 상태가 담당
+      setExtracting(false);
+    }
+    if (numbers.length > 0) {
+      // state 비동기 갱신 회피 위해 추출 결과 명시 전달
+      await handleSubmit(numbers);
+    }
+  };
+
   // 전체 태그 (해당 법역 내)
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -239,12 +304,56 @@ export default function MyArchive() {
     <div className="space-y-6">
       {/* 일괄 입력 */}
       <div className="bg-white rounded-2xl border border-zinc-200 p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-        <div className="flex items-center gap-2.5 mb-3">
-          <div className="w-2 h-2 rounded-full bg-blue-500" />
-          <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">
-            사건번호 일괄 입력
-          </span>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">
+              사건번호 일괄 입력
+            </span>
+          </div>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={extracting || submitting}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="사진에서 사건번호 추출"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+              <circle cx="12" cy="13" r="3"/>
+            </svg>
+            사진에서 추출
+          </button>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = ""; // 같은 파일 재선택 가능하도록
+            if (file) await handleImageExtract(file);
+          }}
+        />
+        {extracting && (
+          <div className="mb-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-100 text-[12px] text-blue-700 flex items-center gap-2">
+            <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-700 rounded-full animate-spin" />
+            사진에서 사건번호 인식 중...
+          </div>
+        )}
+        {extractError && (
+          <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-700 flex items-start justify-between gap-2">
+            <span>⚠ {extractError}</span>
+            <button
+              onClick={() => setExtractError(null)}
+              className="text-amber-400 hover:text-amber-700 leading-none"
+              aria-label="닫기"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <textarea
           value={input}
           onChange={e => setInput(e.target.value)}
@@ -257,7 +366,7 @@ export default function MyArchive() {
             {input.split(/[\n,;\s]+/).filter(Boolean).length}건 입력됨 (최대 50건)
           </p>
           <button
-            onClick={handleSubmit}
+            onClick={() => handleSubmit()}
             disabled={submitting || !input.trim()}
             className="h-9 px-5 bg-blue-900 text-white text-[13px] font-medium rounded-lg hover:bg-blue-800 transition-colors disabled:opacity-40"
           >
