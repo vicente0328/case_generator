@@ -44,6 +44,9 @@ interface Props {
   searchTerm: string;
   onDeleted: (id: string) => void;
   onUpdated: (id: string, partial: Partial<ArchiveCase>) => void;
+  selectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
 function formatDate(d?: string): string {
@@ -177,7 +180,16 @@ function StarRating({
   );
 }
 
-export default function ArchiveCaseCard({ uid, c, searchTerm, onDeleted, onUpdated }: Props) {
+export default function ArchiveCaseCard({
+  uid,
+  c,
+  searchTerm,
+  onDeleted,
+  onUpdated,
+  selectMode = false,
+  isSelected = false,
+  onToggleSelect,
+}: Props) {
   const [newMemo, setNewMemo] = useState("");
   const [busy, setBusy] = useState(false);
   const [collapsedPoints, setCollapsedPoints] = useState(false);
@@ -336,10 +348,33 @@ export default function ArchiveCaseCard({ uid, c, searchTerm, onDeleted, onUpdat
   const ratio = (c.rulingRatio || "").trim();
 
   return (
-    <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div
+      className={`bg-white rounded-2xl border overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)] transition-colors ${
+        selectMode && isSelected
+          ? "border-blue-500 ring-2 ring-blue-200"
+          : "border-zinc-200"
+      }`}
+    >
       {/* 헤더 */}
       <div className="px-5 py-4 border-b border-zinc-100 flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        {selectMode && (
+          <button
+            onClick={() => onToggleSelect?.(c.id)}
+            className={`flex-shrink-0 mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+              isSelected
+                ? "bg-blue-600 border-blue-600"
+                : "border-zinc-300 hover:border-blue-500"
+            }`}
+            aria-label={isSelected ? "선택 해제" : "선택"}
+          >
+            {isSelected && (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
+          </button>
+        )}
+        <div className="min-w-0 flex-1">
           <p className="text-[15px] font-bold tracking-tight font-mono text-zinc-900 break-all">
             {c.caseNumber}
           </p>
@@ -350,13 +385,15 @@ export default function ArchiveCaseCard({ uid, c, searchTerm, onDeleted, onUpdat
             <StarRating value={importance} onChange={handleImportance} />
           </div>
         </div>
-        <button
-          onClick={handleDeleteCase}
-          className="flex-shrink-0 text-[12px] text-zinc-400 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
-          title="삭제"
-        >
-          삭제
-        </button>
+        {!selectMode && (
+          <button
+            onClick={handleDeleteCase}
+            className="flex-shrink-0 text-[12px] text-zinc-400 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
+            title="삭제"
+          >
+            삭제
+          </button>
+        )}
       </div>
 
       {/* 태그 */}

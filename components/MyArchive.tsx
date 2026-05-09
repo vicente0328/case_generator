@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   query,
@@ -45,6 +46,130 @@ function normalizeId(cn: string): string {
   });
 }
 
+function escHtml(s: string): string {
+  return s.replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!),
+  );
+}
+
+function applyHighlightsHtml(text: string, highlights: string[]): string {
+  if (!text) return "";
+  if (!highlights || highlights.length === 0) return escHtml(text);
+  const flags = new Array<number>(text.length).fill(0);
+  for (const h of highlights) {
+    if (!h) continue;
+    let idx = 0;
+    while (true) {
+      const found = text.indexOf(h, idx);
+      if (found === -1) break;
+      for (let i = found; i < found + h.length; i++) flags[i] = 1;
+      idx = found + h.length;
+    }
+  }
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const f = flags[i];
+    let j = i + 1;
+    while (j < text.length && flags[j] === f) j++;
+    const seg = escHtml(text.slice(i, j));
+    out += f ? `<mark>${seg}</mark>` : seg;
+    i = j;
+  }
+  return out;
+}
+
+function formatPdfDate(d?: string): string {
+  if (!d) return "";
+  const s = String(d).replace(/\D/g, "");
+  if (s.length === 8) return `${s.slice(0, 4)}. ${s.slice(4, 6)}. ${s.slice(6, 8)}.`;
+  return d;
+}
+
+function formatMemoTs(t: unknown): string {
+  const seconds = (t as { seconds?: number } | null)?.seconds;
+  if (!seconds) return "";
+  const d = new Date(seconds * 1000);
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function buildPrintHtml(items: ArchiveCase[]): string {
+  const today = new Date();
+  const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const sections = items
+    .map(c => {
+      const meta = [c.court, formatPdfDate(c.date), c.caseName].filter(Boolean).join(" · ");
+      const stars = c.importance && c.importance > 0
+        ? `<div class="stars">${"★".repeat(c.importance)}<span class="stars-empty">${"★".repeat(5 - c.importance)}</span></div>`
+        : "";
+      const tags = c.tags && c.tags.length > 0
+        ? `<div class="tags">${c.tags.map(t => `<span class="tag">#${escHtml(t)}</span>`).join("")}</div>`
+        : "";
+      const points = (c.rulingPoints || "").trim();
+      const ratio = (c.rulingRatio || "").trim();
+      const pointsHtml = points
+        ? `<h2>판시사항</h2><div class="body">${applyHighlightsHtml(points, c.highlights?.rulingPoints ?? [])}</div>`
+        : "";
+      const ratioHtml = ratio
+        ? `<h2>판결요지</h2><div class="body">${applyHighlightsHtml(ratio, c.highlights?.rulingRatio ?? [])}</div>`
+        : "";
+      const memos = (c.memos ?? []).slice().sort((a, b) => {
+        const at = (a.createdAt as { seconds?: number } | null)?.seconds ?? 0;
+        const bt = (b.createdAt as { seconds?: number } | null)?.seconds ?? 0;
+        return at - bt;
+      });
+      const memosHtml = memos.length > 0
+        ? `<div class="memos"><h2>메모</h2>${memos
+            .map(m => `<div class="memo"><span class="date">${escHtml(formatMemoTs(m.createdAt))}</span>${escHtml(m.text)}</div>`)
+            .join("")}</div>`
+        : "";
+      return `<section class="case">
+        <div class="case-num">${escHtml(c.caseNumber)}</div>
+        <div class="meta">${escHtml(meta)}</div>
+        ${stars}
+        ${tags}
+        ${pointsHtml}
+        ${ratioHtml}
+        ${memosHtml}
+      </section>`;
+    })
+    .join("");
+  return `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"/>
+<title>My Archive — ${items.length}건 (${stamp})</title>
+<style>
+  @page { size: A4; margin: 18mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "맑은 고딕", "Malgun Gothic", "Noto Sans KR", sans-serif; color: #18181b; line-height: 1.65; font-size: 11pt; margin: 0; }
+  h1 { font-size: 16pt; margin: 0 0 4pt; font-weight: 700; }
+  .header { border-bottom: 2px solid #18181b; padding-bottom: 8pt; margin-bottom: 16pt; }
+  .header .sub { color: #71717a; font-size: 10pt; }
+  .case { page-break-after: always; }
+  .case:last-child { page-break-after: auto; }
+  .case-num { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13pt; font-weight: 700; }
+  .meta { color: #71717a; font-size: 10pt; margin: 2pt 0 4pt; }
+  .stars { color: #f59e0b; font-size: 11pt; letter-spacing: 1pt; }
+  .stars-empty { color: #e4e4e7; }
+  h2 { font-size: 9pt; color: #71717a; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; margin: 12pt 0 4pt; }
+  .body { white-space: pre-wrap; word-break: keep-all; }
+  mark { background: #fef08a; padding: 0 1px; }
+  .tags { margin-top: 6pt; }
+  .tag { display: inline-block; background: #f4f4f5; color: #52525b; font-size: 9pt; padding: 1pt 6pt; border-radius: 999px; margin: 0 3pt 3pt 0; }
+  .memos { margin-top: 10pt; padding-top: 6pt; border-top: 1px solid #e4e4e7; }
+  .memo { font-size: 10pt; margin-bottom: 3pt; white-space: pre-wrap; }
+  .memo .date { color: #a1a1aa; font-size: 9pt; margin-right: 6pt; font-family: ui-monospace, monospace; }
+  @media print { .no-print { display: none; } }
+</style>
+</head><body>
+<div class="header"><h1>My Archive — 판례 ${items.length}건</h1><div class="sub">${stamp}</div></div>
+${sections}
+<script>window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 250); });</script>
+</body></html>`;
+}
+
 export default function MyArchive() {
   const { user } = useAuth();
   const [cases, setCases] = useState<ArchiveCase[]>([]);
@@ -59,6 +184,9 @@ export default function MyArchive() {
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<string[]>([]);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 초기 로드
@@ -177,6 +305,71 @@ export default function MyArchive() {
 
   const handleDeleted = (id: string) => {
     setCases(prev => prev.filter(c => c.id !== id));
+    setSelected(prev => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
+  const handleBulkDelete = async (visibleIds: string[]) => {
+    if (!user || selected.size === 0 || bulkBusy) return;
+    const ids = visibleIds.filter(id => selected.has(id));
+    if (ids.length === 0) return;
+    if (!confirm(`선택된 ${ids.length}건을 아카이브에서 삭제하시겠습니까?`)) return;
+    setBulkBusy(true);
+    const failed: string[] = [];
+    await Promise.all(
+      ids.map(async id => {
+        try {
+          await deleteDoc(doc(db, "users", user.uid, "myCases", id));
+        } catch (e) {
+          console.error("bulk delete failed", id, e);
+          failed.push(id);
+        }
+      }),
+    );
+    const succeeded = new Set(ids.filter(id => !failed.includes(id)));
+    setCases(prev => prev.filter(c => !succeeded.has(c.id)));
+    setSelected(prev => {
+      const next = new Set(prev);
+      for (const id of succeeded) next.delete(id);
+      return next;
+    });
+    setBulkBusy(false);
+    if (failed.length > 0) {
+      alert(`${failed.length}건 삭제에 실패했습니다.`);
+    } else {
+      setSelectMode(false);
+    }
+  };
+
+  const handleBulkExportPdf = (items: ArchiveCase[]) => {
+    if (items.length === 0) return;
+    const html = buildPrintHtml(items);
+    const w = window.open("", "_blank");
+    if (!w) {
+      alert("팝업이 차단되었습니다. 팝업을 허용한 뒤 다시 시도해주세요.");
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   };
 
   const handleUpdated = (id: string, partial: Partial<ArchiveCase>) => {
@@ -465,6 +658,7 @@ export default function MyArchive() {
               onClick={() => {
                 setActiveArea(area);
                 setTagFilter(new Set());
+                setSelected(new Set());
               }}
               className={`flex-1 h-9 rounded-lg text-[13px] font-medium transition-all flex items-center justify-center gap-2 ${
                 active ? style.tabActive : style.tab
@@ -523,6 +717,87 @@ export default function MyArchive() {
         </div>
       )}
 
+      {/* 선택 모드 툴바 */}
+      {!loading && filtered.length > 0 && (
+        <div className="flex items-center justify-between gap-2">
+          {!selectMode ? (
+            <button
+              onClick={() => setSelectMode(true)}
+              className="text-[12px] font-medium text-zinc-600 hover:text-zinc-900 transition-colors inline-flex items-center gap-1.5 h-8 px-3 rounded-lg hover:bg-zinc-100"
+              title="여러 판례 선택"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <polyline points="9 11 12 14 17 9"/>
+              </svg>
+              선택
+            </button>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[12px] font-semibold text-zinc-900">
+                  {(() => {
+                    const visibleSelected = filtered.filter(c => selected.has(c.id)).length;
+                    return `${visibleSelected}건 선택됨`;
+                  })()}
+                </span>
+                <button
+                  onClick={() => {
+                    const allSelected = filtered.every(c => selected.has(c.id));
+                    if (allSelected) {
+                      setSelected(prev => {
+                        const next = new Set(prev);
+                        for (const c of filtered) next.delete(c.id);
+                        return next;
+                      });
+                    } else {
+                      setSelected(prev => {
+                        const next = new Set(prev);
+                        for (const c of filtered) next.add(c.id);
+                        return next;
+                      });
+                    }
+                  }}
+                  className="text-[12px] text-zinc-600 hover:text-zinc-900 transition-colors h-7 px-2 rounded-md hover:bg-zinc-100"
+                >
+                  {filtered.every(c => selected.has(c.id)) ? "전체 해제" : "전체 선택"}
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    const items = filtered.filter(c => selected.has(c.id));
+                    handleBulkExportPdf(items);
+                  }}
+                  disabled={selected.size === 0 || bulkBusy}
+                  className="h-8 px-3 text-[12px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  PDF 내보내기
+                </button>
+                <button
+                  onClick={() => handleBulkDelete(filtered.map(c => c.id))}
+                  disabled={selected.size === 0 || bulkBusy}
+                  className="h-8 px-3 text-[12px] font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {bulkBusy ? "삭제 중..." : "삭제"}
+                </button>
+                <button
+                  onClick={exitSelectMode}
+                  disabled={bulkBusy}
+                  className="h-8 px-3 text-[12px] font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors disabled:opacity-40"
+                >
+                  취소
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* 리스트 */}
       <div className="space-y-3">
         {loading ? (
@@ -544,6 +819,9 @@ export default function MyArchive() {
               searchTerm={search}
               onDeleted={handleDeleted}
               onUpdated={handleUpdated}
+              selectMode={selectMode}
+              isSelected={selected.has(c.id)}
+              onToggleSelect={toggleSelect}
             />
           ))
         )}
