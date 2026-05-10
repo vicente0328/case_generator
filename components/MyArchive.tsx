@@ -7,6 +7,7 @@ import {
   serverTimestamp,
   setDoc,
   Timestamp,
+  where,
   writeBatch,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/contexts/AuthContext";
@@ -176,7 +177,12 @@ ${sections}
 </body></html>`;
 }
 
-export default function MyArchive() {
+interface MyArchiveProps {
+  onOpenInGenerator?: (caseNumber: string) => void;
+  postedCaseNumbersRefreshSignal?: number;
+}
+
+export default function MyArchive({ onOpenInGenerator, postedCaseNumbersRefreshSignal }: MyArchiveProps = {}) {
   const { user } = useAuth();
   const [cases, setCases] = useState<ArchiveCase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,6 +203,7 @@ export default function MyArchive() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkCollapse, setBulkCollapse] = useState<{ v: number; collapsed: boolean }>({ v: 0, collapsed: false });
   const [visibleCount, setVisibleCount] = useState(20);
+  const [postedCaseNumbers, setPostedCaseNumbers] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 초기 로드
@@ -241,6 +248,39 @@ export default function MyArchive() {
       cancelled = true;
     };
   }, [user]);
+
+  // 보유한 사건번호들에 대해 전역 posts 컬렉션에 이미 생성된 문제가 있는지 30건 단위로 일괄 조회
+  const refreshPostedCaseNumbers = useCallback(async () => {
+    if (cases.length === 0) {
+      setPostedCaseNumbers(new Set());
+      return;
+    }
+    const numbers = Array.from(new Set(cases.map(c => c.caseNumber).filter(Boolean)));
+    const found = new Set<string>();
+    const CHUNK = 30; // Firestore "in" 한도
+    const chunks: string[][] = [];
+    for (let i = 0; i < numbers.length; i += CHUNK) {
+      chunks.push(numbers.slice(i, i + CHUNK));
+    }
+    try {
+      await Promise.all(
+        chunks.map(async chunk => {
+          const snap = await getDocs(query(collection(db, "posts"), where("caseNumber", "in", chunk)));
+          snap.docs.forEach(d => {
+            const cn = d.data().caseNumber;
+            if (typeof cn === "string") found.add(cn);
+          });
+        }),
+      );
+      setPostedCaseNumbers(found);
+    } catch (e) {
+      console.error("posts existence query failed", e);
+    }
+  }, [cases]);
+
+  useEffect(() => {
+    void refreshPostedCaseNumbers();
+  }, [refreshPostedCaseNumbers, postedCaseNumbersRefreshSignal]);
 
   const handleSubmit = async (overrideTokens?: string[]) => {
     if (!user || submitting) return;
@@ -913,6 +953,8 @@ export default function MyArchive() {
                 isSelected={selected.has(c.id)}
                 onToggleSelect={toggleSelect}
                 bulkCollapse={bulkCollapse}
+                hasPost={postedCaseNumbers.has(c.caseNumber)}
+                onOpenInGenerator={onOpenInGenerator}
               />
             ))}
             {visibleCount < filtered.length && (

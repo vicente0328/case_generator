@@ -531,6 +531,9 @@ export default function Home() {
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   const [mode, setMode] = useState<"generator" | "archive">("generator");
+  // archive 카드에서 generator 로 진입했는지 — 백 버튼 노출 + 복귀 시 posts 재조회 트리거
+  const [cameFromArchive, setCameFromArchive] = useState(false);
+  const [archivePostsRefreshSignal, setArchivePostsRefreshSignal] = useState(0);
   // localStorage 복원 (마운트 후)
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("homeMode") : null;
@@ -768,8 +771,8 @@ export default function Home() {
     })();
   };
 
-  const lookup = async () => {
-    const num = input.trim();
+  const lookup = async (overrideCaseNumber?: string) => {
+    const num = (overrideCaseNumber ?? input).trim();
     if (!num) return;
     setError(""); setLoadingCase(true); setExistingPost(null);
     prefetchAbortRef.current?.abort();
@@ -816,6 +819,44 @@ export default function Home() {
     } finally {
       setLoadingCase(false);
     }
+  };
+
+  // My Archive 카드에서 진입 — generator 로 모드 전환 후 lookup 트리거
+  const openInGeneratorFromArchive = (caseNumber: string) => {
+    const num = caseNumber.trim();
+    if (!num) return;
+    prefetchAbortRef.current?.abort();
+    prefetchRef.current = null;
+    autoSaveRef.current = false;
+    setCameFromArchive(true);
+    setMode("generator");
+    setStep("input");
+    setCaseData(null);
+    setGenerated("");
+    setError("");
+    setPostId(null);
+    setVoted(null);
+    setExistingPost(null);
+    setInput(num);
+    void lookup(num);
+  };
+
+  const backToArchive = () => {
+    prefetchAbortRef.current?.abort();
+    prefetchRef.current = null;
+    autoSaveRef.current = false;
+    setCameFromArchive(false);
+    setStep("input");
+    setCaseData(null);
+    setGenerated("");
+    setError("");
+    setPostId(null);
+    setVoted(null);
+    setExistingPost(null);
+    setInput("");
+    setMode("archive");
+    // archive 로 돌아올 때 hasPost 재조회 (방금 생성한 사건이 즉시 "보기" 로 보이도록)
+    setArchivePostsRefreshSignal(s => s + 1);
   };
 
   const submitManualText = () => {
@@ -1163,7 +1204,10 @@ ${renderSectionsHtml(post.content as string || "")}
         {/* 모드 토글 */}
         <div className="flex gap-1 mb-6 bg-white border border-zinc-100 rounded-xl p-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)] max-w-sm mx-auto">
           <button
-            onClick={() => setMode("generator")}
+            onClick={() => {
+              setCameFromArchive(false);
+              setMode("generator");
+            }}
             className={`flex-1 py-2 text-[13px] rounded-lg transition-colors ${
               mode === "generator"
                 ? "font-semibold text-blue-900 bg-blue-50"
@@ -1175,7 +1219,9 @@ ${renderSectionsHtml(post.content as string || "")}
           <button
             onClick={() => {
               if (!user) { setShowAuthModal(true); return; }
+              setCameFromArchive(false);
               setMode("archive");
+              setArchivePostsRefreshSignal(s => s + 1);
             }}
             className={`relative flex-1 py-2 text-[13px] rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
               mode === "archive"
@@ -1190,9 +1236,27 @@ ${renderSectionsHtml(post.content as string || "")}
           </button>
         </div>
 
-        {mode === "archive" && <MyArchive />}
+        {mode === "archive" && (
+          <MyArchive
+            onOpenInGenerator={openInGeneratorFromArchive}
+            postedCaseNumbersRefreshSignal={archivePostsRefreshSignal}
+          />
+        )}
 
         {mode === "generator" && (<>
+        {/* My Archive 에서 진입 시 백 버튼 */}
+        {cameFromArchive && (
+          <button
+            onClick={backToArchive}
+            className="mb-3 inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-zinc-600 hover:text-zinc-900 bg-white hover:bg-zinc-50 border border-zinc-200 rounded-lg transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"/>
+              <polyline points="12 19 5 12 12 5"/>
+            </svg>
+            My Archive 로 돌아가기
+          </button>
+        )}
         {/* 법역 탭 */}
         <div className="flex gap-1 mb-6 bg-white border border-zinc-100 rounded-xl p-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           {(["민사법", "공법", "형사법"] as LawArea[]).map(tab => (
@@ -1281,7 +1345,7 @@ ${renderSectionsHtml(post.content as string || "")}
                 autoFocus
               />
               <button
-                onClick={lookup}
+                onClick={() => lookup()}
                 disabled={!input.trim() || loadingCase}
                 className="h-[52px] px-5 bg-blue-900 text-white rounded-xl text-[14px] font-semibold hover:bg-blue-800 transition-colors disabled:opacity-40 flex-shrink-0 min-w-[72px] flex items-center justify-center gap-2"
               >

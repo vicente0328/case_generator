@@ -66,6 +66,8 @@ interface Props {
   isSelected?: boolean;
   onToggleSelect?: (id: string) => void;
   bulkCollapse?: { v: number; collapsed: boolean };
+  hasPost?: boolean;
+  onOpenInGenerator?: (caseNumber: string) => void;
 }
 
 function formatDate(d?: string): string {
@@ -219,6 +221,8 @@ function ArchiveCaseCardImpl({
   isSelected = false,
   onToggleSelect,
   bulkCollapse,
+  hasPost = false,
+  onOpenInGenerator,
 }: Props) {
   const [newMemo, setNewMemo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -653,6 +657,38 @@ function ArchiveCaseCardImpl({
           })(),
           document.body,
         )}
+
+      {/* 사례형 문제 액션 */}
+      {onOpenInGenerator && (
+        <div className="px-5 py-3 border-t border-zinc-100">
+          <button
+            onClick={() => onOpenInGenerator(c.caseNumber)}
+            className={`w-full h-10 text-[13px] font-semibold rounded-lg transition-colors inline-flex items-center justify-center gap-2 ${
+              hasPost
+                ? "text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100"
+                : "text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-100"
+            }`}
+          >
+            {hasPost ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                사례형 문제 보기
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+                사례형 문제 생성하기
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* 메모 섹션 */}
       <div className="px-5 py-4 border-t border-zinc-100 bg-zinc-50/50">
