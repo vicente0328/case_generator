@@ -609,16 +609,38 @@ function ArchiveCaseCardImpl({
       {pending && typeof window !== "undefined" &&
         createPortal(
           (() => {
+            const isTouch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+            // 모바일: iOS/Android 시스템 selection menu 와 절대 겹치지 않도록 화면 하단 고정 액션바
+            if (isTouch) {
+              return (
+                <div
+                  data-highlight-popover
+                  style={{ bottom: "max(env(safe-area-inset-bottom, 0px) + 12px, 16px)" }}
+                  className="fixed left-3 right-3 z-50 animate-in slide-in-from-bottom-2 fade-in duration-150 ease-out"
+                >
+                  <button
+                    onMouseDown={e => e.preventDefault()}
+                    onTouchStart={e => e.stopPropagation()}
+                    onClick={addHighlight}
+                    className="w-full h-12 bg-yellow-300 active:bg-yellow-400 text-zinc-900 text-[14px] font-semibold rounded-2xl shadow-2xl ring-1 ring-yellow-500/30 transition-colors flex items-center justify-center gap-2 touch-manipulation"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 11l-6 6v3h3l6-6"/>
+                      <path d="M14 7l3-3 3 3-3 3z"/>
+                      <path d="M9 11l5-5 4 4-5 5z"/>
+                    </svg>
+                    형광펜 적용
+                  </button>
+                </div>
+              );
+            }
+            // 데스크톱: 선택 영역에 anchored 된 contextual pill (시스템 callout 이 없어 충돌 무관)
             const BTN_H = 36;
             const GAP = 8;
-            // 모바일(터치 기기)에서는 iOS/Android 시스템 callout 과 겹치지 않도록 항상 아래로
-            const isTouch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
-            // 데스크톱: 위쪽 공간이 부족하면 아래로 뒤집기
-            const flipBelow = isTouch || pending.rect.top < BTN_H + GAP + 4;
+            const flipBelow = pending.rect.top < BTN_H + GAP + 4;
             const top = flipBelow
               ? pending.rect.bottom + window.scrollY + GAP
               : pending.rect.top + window.scrollY - BTN_H - GAP;
-            // 가로 중앙 + 뷰포트 좌우 클램프
             const centerX = pending.rect.left + window.scrollX + pending.rect.width / 2;
             const minX = window.scrollX + 12;
             const maxX = window.scrollX + window.innerWidth - 12;
@@ -631,9 +653,8 @@ function ArchiveCaseCardImpl({
               >
                 <button
                   onMouseDown={e => e.preventDefault()}
-                  onTouchStart={e => e.stopPropagation()}
                   onClick={addHighlight}
-                  className="px-3.5 h-9 bg-yellow-300 hover:bg-yellow-400 active:bg-yellow-400 text-zinc-900 text-[12px] font-semibold rounded-full shadow-lg ring-1 ring-yellow-500/20 transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
+                  className="px-3.5 h-9 bg-yellow-300 hover:bg-yellow-400 active:bg-yellow-400 text-zinc-900 text-[12px] font-semibold rounded-full shadow-lg ring-1 ring-yellow-500/20 transition-colors flex items-center gap-1.5 whitespace-nowrap"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 11l-6 6v3h3l6-6"/>
