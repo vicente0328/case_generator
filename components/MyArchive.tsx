@@ -581,6 +581,11 @@ export default function MyArchive({ onOpenInGenerator, postedCaseNumbersRefreshS
         const ai = a.importance ?? 0;
         const bi = b.importance ?? 0;
         if (ai !== bi) return bi - ai;
+        // tiebreaker 1: 선고일 최신순
+        const ad = (a.date || "").replace(/\D/g, "");
+        const bd = (b.date || "").replace(/\D/g, "");
+        if (ad !== bd) return bd.localeCompare(ad);
+        // tiebreaker 2: 추가 최신순 (아래 공통 fallthrough)
       }
       if (sortMode === "dateDesc") {
         const ad = (a.date || "").replace(/\D/g, "");
