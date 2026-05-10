@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
-  deleteDoc,
   doc,
   getDocs,
   query,
   serverTimestamp,
   setDoc,
   Timestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { db } from "@/lib/firebase";
@@ -184,6 +184,7 @@ export default function MyArchive() {
   const [submitting, setSubmitting] = useState(false);
   const [report, setReport] = useState<{ ok: number; failed: { input: string; error: string }[] } | null>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("dateDesc");
   const [activeArea, setActiveArea] = useState<LawArea>("민사법");
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
@@ -194,6 +195,7 @@ export default function MyArchive() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkCollapse, setBulkCollapse] = useState<{ v: number; collapsed: boolean }>({ v: 0, collapsed: false });
+  const [visibleCount, setVisibleCount] = useState(20);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 초기 로드
@@ -310,7 +312,7 @@ export default function MyArchive() {
     }
   };
 
-  const handleDeleted = (id: string) => {
+  const handleDeleted = useCallback((id: string) => {
     setCases(prev => prev.filter(c => c.id !== id));
     setSelected(prev => {
       if (!prev.has(id)) return prev;
@@ -318,16 +320,16 @@ export default function MyArchive() {
       next.delete(id);
       return next;
     });
-  };
+  }, []);
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = useCallback((id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
   const exitSelectMode = () => {
     setSelectMode(false);
@@ -340,18 +342,24 @@ export default function MyArchive() {
     if (ids.length === 0) return;
     if (!confirm(`선택된 ${ids.length}건을 아카이브에서 삭제하시겠습니까?`)) return;
     setBulkBusy(true);
-    const failed: string[] = [];
-    await Promise.all(
-      ids.map(async id => {
-        try {
-          await deleteDoc(doc(db, "users", user.uid, "myCases", id));
-        } catch (e) {
-          console.error("bulk delete failed", id, e);
-          failed.push(id);
-        }
-      }),
-    );
-    const succeeded = new Set(ids.filter(id => !failed.includes(id)));
+    const succeeded = new Set<string>();
+    let failedCount = 0;
+    // Firestore writeBatch 한도(500) 단위로 청크 분할
+    const CHUNK = 500;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        batch.delete(doc(db, "users", user.uid, "myCases", id));
+      }
+      try {
+        await batch.commit();
+        for (const id of chunk) succeeded.add(id);
+      } catch (e) {
+        console.error("bulk delete batch failed", chunk, e);
+        failedCount += chunk.length;
+      }
+    }
     setCases(prev => prev.filter(c => !succeeded.has(c.id)));
     setSelected(prev => {
       const next = new Set(prev);
@@ -359,8 +367,8 @@ export default function MyArchive() {
       return next;
     });
     setBulkBusy(false);
-    if (failed.length > 0) {
-      alert(`${failed.length}건 삭제에 실패했습니다.`);
+    if (failedCount > 0) {
+      alert(`${failedCount}건 삭제에 실패했습니다.`);
     } else {
       setSelectMode(false);
     }
@@ -379,9 +387,9 @@ export default function MyArchive() {
     w.document.close();
   };
 
-  const handleUpdated = (id: string, partial: Partial<ArchiveCase>) => {
+  const handleUpdated = useCallback((id: string, partial: Partial<ArchiveCase>) => {
     setCases(prev => prev.map(c => (c.id === id ? { ...c, ...partial } : c)));
-  };
+  }, []);
 
   // 이미지 → 1500px 리사이즈 → JPEG base64 (data URL)
   const fileToDataUrl = (file: File): Promise<string> =>
@@ -445,6 +453,30 @@ export default function MyArchive() {
     }
   };
 
+  // 검색어 디바운스 (150ms) — 카드의 하이라이트는 즉각 반영하되 필터 재계산은 늦춤
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 150);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  // 필터 변경 시 가시 윈도우 20 으로 리셋
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [debouncedSearch, sortMode, activeArea, tagFilter]);
+
+  // 케이스별 검색용 normalized blob 사전 계산 — cases 가 바뀔 때만 1회
+  const searchBlobs = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of cases) {
+      const blob = (
+        c.caseNumber + " " + c.caseName + " " + c.rulingPoints + " " + c.rulingRatio + " " +
+        (c.tags ?? []).join(" ")
+      ).toLowerCase();
+      map.set(c.id, blob);
+    }
+    return map;
+  }, [cases]);
+
   // 전체 태그 (해당 법역 내)
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -457,17 +489,13 @@ export default function MyArchive() {
 
   // 검색/정렬/필터링
   const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase();
+    const s = debouncedSearch.trim().toLowerCase();
     const inArea = cases.filter(c => c.lawArea === activeArea);
     const tagged = tagFilter.size === 0
       ? inArea
       : inArea.filter(c => (c.tags ?? []).some(t => tagFilter.has(t)));
     const matched = s
-      ? tagged.filter(c =>
-          (c.caseNumber + " " + c.caseName + " " + c.rulingPoints + " " + c.rulingRatio + " " + (c.tags ?? []).join(" "))
-            .toLowerCase()
-            .includes(s)
-        )
+      ? tagged.filter(c => (searchBlobs.get(c.id) ?? "").includes(s))
       : tagged;
     const sorted = [...matched].sort((a, b) => {
       if (sortMode === "importanceDesc") {
@@ -485,7 +513,7 @@ export default function MyArchive() {
       return bt - at;
     });
     return sorted;
-  }, [cases, search, sortMode, activeArea, tagFilter]);
+  }, [cases, debouncedSearch, searchBlobs, sortMode, activeArea, tagFilter]);
 
   const counts = useMemo(() => {
     const c: Record<LawArea, number> = { 민사법: 0, 공법: 0, 형사법: 0 };
@@ -842,20 +870,32 @@ export default function MyArchive() {
                 : `${activeArea} 영역에 추가된 판례가 없습니다.`}
           </p>
         ) : (
-          filtered.map(c => (
-            <ArchiveCaseCard
-              key={c.id}
-              uid={user.uid}
-              c={c}
-              searchTerm={search}
-              onDeleted={handleDeleted}
-              onUpdated={handleUpdated}
-              selectMode={selectMode}
-              isSelected={selected.has(c.id)}
-              onToggleSelect={toggleSelect}
-              bulkCollapse={bulkCollapse}
-            />
-          ))
+          <>
+            {filtered.slice(0, visibleCount).map(c => (
+              <ArchiveCaseCard
+                key={c.id}
+                uid={user.uid}
+                c={c}
+                searchTerm={search}
+                onDeleted={handleDeleted}
+                onUpdated={handleUpdated}
+                selectMode={selectMode}
+                isSelected={selected.has(c.id)}
+                onToggleSelect={toggleSelect}
+                bulkCollapse={bulkCollapse}
+              />
+            ))}
+            {visibleCount < filtered.length && (
+              <div className="pt-2">
+                <button
+                  onClick={() => setVisibleCount(v => v + 20)}
+                  className="w-full h-10 text-[13px] font-medium text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200 rounded-xl transition-colors"
+                >
+                  더 보기 (남은 {filtered.length - visibleCount}건)
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

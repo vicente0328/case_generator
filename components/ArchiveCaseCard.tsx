@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   doc,
@@ -209,7 +209,7 @@ function StarRating({
   );
 }
 
-export default function ArchiveCaseCard({
+function ArchiveCaseCardImpl({
   uid,
   c,
   searchTerm,
@@ -422,8 +422,34 @@ export default function ArchiveCaseCard({
     }
   };
 
-  const points = (c.rulingPoints || "").trim();
-  const ratio = (c.rulingRatio || "").trim();
+  const points = useMemo(() => (c.rulingPoints || "").trim(), [c.rulingPoints]);
+  const ratio = useMemo(() => (c.rulingRatio || "").trim(), [c.rulingRatio]);
+
+  const sortedMemos = useMemo(() => {
+    return [...memos].sort((a, b) => {
+      const at = (a.createdAt as { seconds?: number } | null)?.seconds ?? 0;
+      const bt = (b.createdAt as { seconds?: number } | null)?.seconds ?? 0;
+      return bt - at;
+    });
+  }, [memos]);
+
+  const removeRulingPointsHighlight = (h: HighlightItem) => removeHighlight("rulingPoints", h);
+  const removeRulingRatioHighlight = (h: HighlightItem) => removeHighlight("rulingRatio", h);
+
+  const pointsRendered = useMemo(
+    () => points
+      ? renderWithHighlights(points, highlights.rulingPoints, searchTerm, removeRulingPointsHighlight)
+      : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [points, highlights.rulingPoints, searchTerm],
+  );
+  const ratioRendered = useMemo(
+    () => ratio
+      ? renderWithHighlights(ratio, highlights.rulingRatio, searchTerm, removeRulingRatioHighlight)
+      : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ratio, highlights.rulingRatio, searchTerm],
+  );
 
   return (
     <div
@@ -536,12 +562,7 @@ export default function ArchiveCaseCard({
                 ref={pointsRef}
                 className="whitespace-pre-wrap selection:bg-blue-100"
               >
-                {renderWithHighlights(
-                  points,
-                  highlights.rulingPoints,
-                  searchTerm,
-                  (h) => removeHighlight("rulingPoints", h),
-                )}
+                {pointsRendered}
               </div>
             ) : (
               <div className="text-[13px] text-zinc-400 italic">판시사항 정보 없음</div>
@@ -576,12 +597,7 @@ export default function ArchiveCaseCard({
                 ref={ratioRef}
                 className="whitespace-pre-wrap selection:bg-blue-100"
               >
-                {renderWithHighlights(
-                  ratio,
-                  highlights.rulingRatio,
-                  searchTerm,
-                  (h) => removeHighlight("rulingRatio", h),
-                )}
+                {ratioRendered}
               </div>
             ) : (
               <div className="text-[13px] text-zinc-400 italic">판결요지 정보 없음</div>
@@ -639,13 +655,7 @@ export default function ArchiveCaseCard({
         </div>
         {memos.length > 0 && (
           <ul className="space-y-1.5 mb-3">
-            {[...memos]
-              .sort((a, b) => {
-                const at = (a.createdAt as { seconds?: number })?.seconds ?? 0;
-                const bt = (b.createdAt as { seconds?: number })?.seconds ?? 0;
-                return bt - at;
-              })
-              .map(m => (
+            {sortedMemos.map(m => (
                 <li
                   key={m.id}
                   className="flex items-start gap-2 text-[12px] bg-white rounded-lg px-3 py-2 border border-zinc-100"
@@ -692,3 +702,20 @@ export default function ArchiveCaseCard({
     </div>
   );
 }
+
+const ArchiveCaseCard = memo(ArchiveCaseCardImpl, (prev, next) => {
+  return (
+    prev.uid === next.uid &&
+    prev.c === next.c &&
+    prev.searchTerm === next.searchTerm &&
+    prev.selectMode === next.selectMode &&
+    prev.isSelected === next.isSelected &&
+    prev.bulkCollapse?.v === next.bulkCollapse?.v &&
+    prev.bulkCollapse?.collapsed === next.bulkCollapse?.collapsed &&
+    prev.onDeleted === next.onDeleted &&
+    prev.onUpdated === next.onUpdated &&
+    prev.onToggleSelect === next.onToggleSelect
+  );
+});
+
+export default ArchiveCaseCard;
