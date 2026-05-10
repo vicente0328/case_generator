@@ -191,6 +191,7 @@ export default function MyArchive() {
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<string[]>([]);
+  const [bulkTags, setBulkTags] = useState("");
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -262,6 +263,16 @@ export default function MyArchive() {
         throw new Error(data.error ?? "조회 실패");
       }
 
+      // 일괄 태그 — 비어있지 않으면 모든 성공 건에 적용 (기존 태그와 병합)
+      const bulkTagList = Array.from(
+        new Set(
+          bulkTags
+            .split(/[\n,;\s]+/)
+            .map(s => s.trim())
+            .filter(Boolean),
+        ),
+      );
+
       // 성공 건 Firestore 저장 + 로컬 상태 반영
       const now = Timestamp.now();
       const newOrUpdated: ArchiveCase[] = [];
@@ -271,7 +282,10 @@ export default function MyArchive() {
         const docRef = doc(db, "users", user.uid, "myCases", id);
         // 기존 문서가 있으면 메모 보존 (merge)
         const existing = cases.find(c => c.id === id);
-        const payload = {
+        const mergedTags = bulkTagList.length > 0
+          ? Array.from(new Set([...(existing?.tags ?? []), ...bulkTagList]))
+          : null;
+        const basePayload = {
           caseNumber: item.data.caseNumber || item.input,
           caseName: item.data.caseName || "",
           court: item.data.court || "",
@@ -282,6 +296,7 @@ export default function MyArchive() {
           serialNo: item.data.serialNo || "",
           fetchedAt: serverTimestamp(),
         };
+        const payload = mergedTags ? { ...basePayload, tags: mergedTags } : basePayload;
         try {
           await setDoc(docRef, existing ? payload : { ...payload, memos: [] }, { merge: true });
           newOrUpdated.push({
@@ -289,6 +304,7 @@ export default function MyArchive() {
             ...payload,
             fetchedAt: now,
             memos: existing?.memos ?? [],
+            tags: mergedTags ?? existing?.tags ?? [],
           });
         } catch (e) {
           console.error("myCase save failed", id, e);
@@ -301,7 +317,10 @@ export default function MyArchive() {
         return Array.from(map.values());
       });
       setReport({ ok: data.ok.length, failed: data.failed });
-      if (data.failed.length === 0) setInput("");
+      if (data.failed.length === 0) {
+        setInput("");
+        setBulkTags("");
+      }
     } catch (e) {
       setReport({
         ok: 0,
@@ -624,6 +643,17 @@ export default function MyArchive() {
           rows={5}
           className="w-full text-[13px] font-mono px-3 py-2.5 border border-zinc-200 rounded-lg outline-none focus:border-blue-400 transition-colors resize-y"
         />
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest flex-shrink-0">
+            태그
+          </span>
+          <input
+            value={bulkTags}
+            onChange={e => setBulkTags(e.target.value)}
+            placeholder="모든 추가 판례에 적용할 태그 (쉼표·공백 구분, 선택)"
+            className="flex-1 min-w-0 h-8 px-2.5 text-[12px] border border-zinc-200 rounded-md outline-none focus:border-blue-400 transition-colors bg-white"
+          />
+        </div>
         <div className="flex items-center justify-between mt-3 gap-3">
           <p className="text-[11px] text-zinc-400">
             {input.split(/[\n,;\s]+/).filter(Boolean).length}건 입력됨 (최대 100건)
