@@ -17,12 +17,44 @@ export interface ArchiveMemo {
   createdAt: Timestamp | { seconds: number; nanoseconds?: number } | null;
 }
 
-// 신규: { text, offset } 객체. 레거시: 문자열 — 본문 내 모든 occurrence 매칭(과거 동작).
-export type HighlightItem = string | { text: string; offset: number };
+// 신규: { text, offset, color } 객체. 레거시: 문자열 — 본문 내 모든 occurrence 매칭(과거 동작).
+export type HighlightColor = "yellow" | "blue" | "green" | "red";
+export type HighlightItem = string | { text: string; offset: number; color?: HighlightColor };
 
 export interface ArchiveHighlights {
   rulingPoints: HighlightItem[];
   rulingRatio: HighlightItem[];
+}
+
+const COLOR_BG: Record<HighlightColor, string> = {
+  yellow: "bg-yellow-200",
+  blue: "bg-sky-200",
+  green: "bg-emerald-200",
+  red: "bg-rose-200",
+};
+const COLOR_HOVER: Record<HighlightColor, string> = {
+  yellow: "hover:bg-yellow-300",
+  blue: "hover:bg-sky-300",
+  green: "hover:bg-emerald-300",
+  red: "hover:bg-rose-300",
+};
+const COLOR_SWATCH: Record<HighlightColor, string> = {
+  yellow: "bg-yellow-300",
+  blue: "bg-sky-300",
+  green: "bg-emerald-300",
+  red: "bg-rose-300",
+};
+const COLOR_LABEL: Record<HighlightColor, string> = {
+  yellow: "노랑",
+  blue: "파랑",
+  green: "초록",
+  red: "빨강",
+};
+const COLOR_ORDER: HighlightColor[] = ["yellow", "blue", "green", "red"];
+
+function highlightColor(entry: HighlightItem | undefined): HighlightColor {
+  if (!entry || typeof entry === "string") return "yellow";
+  return entry.color ?? "yellow";
 }
 
 function offsetInPlainText(container: Element, range: Range): number {
@@ -152,12 +184,13 @@ function renderWithHighlights(
     } else {
       // 어느 highlight에 속하는지 (제거용)
       const containingHighlight = highlightRanges.find(r => r.start <= i && r.end >= j);
+      const hlColor = highlightColor(containingHighlight?.entry);
       const className =
         (f & 1) && (f & 2)
-          ? "bg-yellow-300 ring-1 ring-blue-500 rounded px-0.5 cursor-pointer"
+          ? `${COLOR_BG[hlColor]} ring-1 ring-blue-500 rounded px-0.5 cursor-pointer`
           : f & 2
             ? "bg-blue-200 rounded px-0.5"
-            : "bg-yellow-200 rounded px-0.5 cursor-pointer hover:bg-yellow-300";
+            : `${COLOR_BG[hlColor]} ${COLOR_HOVER[hlColor]} rounded px-0.5 cursor-pointer`;
       result.push(
         <mark
           key={key++}
@@ -378,22 +411,31 @@ function ArchiveCaseCardImpl({
     };
   }, []);
 
-  const addHighlight = async () => {
+  const addHighlight = async (color: HighlightColor = "yellow") => {
     if (!pending) return;
     const arr = highlights[pending.field];
-    const exists = arr.some(h =>
+    // 같은 위치에 이미 하이라이트가 있으면 색상만 갱신, 없으면 신규 추가
+    const existingIdx = arr.findIndex(h =>
       typeof h !== "string" && h.text === pending.text && h.offset === pending.offset,
     );
-    if (exists) {
-      setPending(null);
-      return;
+    const newEntry: HighlightItem = { text: pending.text, offset: pending.offset, color };
+    const fieldArr = [...arr];
+    if (existingIdx >= 0) {
+      const prev = fieldArr[existingIdx];
+      // 같은 색이면 no-op
+      if (typeof prev !== "string" && (prev.color ?? "yellow") === color) {
+        setPending(null);
+        return;
+      }
+      fieldArr[existingIdx] = newEntry;
+    } else {
+      fieldArr.push(newEntry);
     }
-    const newEntry: HighlightItem = { text: pending.text, offset: pending.offset };
     const newHighlights: ArchiveHighlights = {
       rulingPoints: [...highlights.rulingPoints],
       rulingRatio: [...highlights.rulingRatio],
     };
-    newHighlights[pending.field] = [...arr, newEntry];
+    newHighlights[pending.field] = fieldArr;
     try {
       await updateDoc(docRef, { highlights: newHighlights });
       onUpdated(c.id, { highlights: newHighlights });
@@ -639,19 +681,19 @@ function ArchiveCaseCardImpl({
                 style={{ position: "absolute", top, left, transform: "translateX(-50%)", zIndex: 50 }}
                 className="animate-in fade-in zoom-in-95 duration-100 ease-out will-change-transform"
               >
-                <button
-                  onMouseDown={e => e.preventDefault()}
-                  onTouchStart={e => e.stopPropagation()}
-                  onClick={addHighlight}
-                  className="px-3.5 h-9 bg-yellow-300 hover:bg-yellow-400 active:bg-yellow-400 text-zinc-900 text-[12px] font-semibold rounded-full shadow-lg ring-1 ring-yellow-500/20 transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 11l-6 6v3h3l6-6"/>
-                    <path d="M14 7l3-3 3 3-3 3z"/>
-                    <path d="M9 11l5-5 4 4-5 5z"/>
-                  </svg>
-                  형광펜
-                </button>
+                <div className="flex items-center gap-1 px-2 h-9 bg-white rounded-full shadow-lg ring-1 ring-zinc-200">
+                  {COLOR_ORDER.map(col => (
+                    <button
+                      key={col}
+                      onMouseDown={e => e.preventDefault()}
+                      onTouchStart={e => e.stopPropagation()}
+                      onClick={() => addHighlight(col)}
+                      className={`w-6 h-6 rounded-full ${COLOR_SWATCH[col]} ring-1 ring-zinc-300/60 hover:scale-110 active:scale-95 transition-transform touch-manipulation`}
+                      aria-label={`${COLOR_LABEL[col]} 형광펜`}
+                      title={COLOR_LABEL[col]}
+                    />
+                  ))}
+                </div>
               </div>
             );
           })(),

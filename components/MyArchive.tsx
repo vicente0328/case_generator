@@ -56,7 +56,18 @@ function escHtml(s: string): string {
 function applyHighlightsHtml(text: string, highlights: HighlightItem[]): string {
   if (!text) return "";
   if (!highlights || highlights.length === 0) return escHtml(text);
-  const flags = new Array<number>(text.length).fill(0);
+  // 위치별 색상 코드: 0=없음, 1=yellow, 2=blue, 3=green, 4=red
+  const colors = new Array<number>(text.length).fill(0);
+  const colorOf = (h: HighlightItem): number => {
+    if (typeof h === "string") return 1; // 레거시는 노랑
+    switch (h.color) {
+      case "blue": return 2;
+      case "green": return 3;
+      case "red": return 4;
+      case "yellow":
+      default: return 1;
+    }
+  };
   for (const h of highlights) {
     if (typeof h === "string") {
       if (!h) continue;
@@ -64,23 +75,29 @@ function applyHighlightsHtml(text: string, highlights: HighlightItem[]): string 
       while (true) {
         const found = text.indexOf(h, idx);
         if (found === -1) break;
-        for (let i = found; i < found + h.length; i++) flags[i] = 1;
+        for (let i = found; i < found + h.length; i++) colors[i] = colorOf(h);
         idx = found + h.length;
       }
     } else {
       if (!h.text || h.offset < 0 || h.offset + h.text.length > text.length) continue;
       if (text.slice(h.offset, h.offset + h.text.length) !== h.text) continue;
-      for (let i = h.offset; i < h.offset + h.text.length; i++) flags[i] = 1;
+      for (let i = h.offset; i < h.offset + h.text.length; i++) colors[i] = colorOf(h);
     }
   }
+  const cls = ["", "", "hl-blue", "hl-green", "hl-red"]; // index 1 (yellow) 은 클래스 없음(default)
   let out = "";
   let i = 0;
   while (i < text.length) {
-    const f = flags[i];
+    const c = colors[i];
     let j = i + 1;
-    while (j < text.length && flags[j] === f) j++;
+    while (j < text.length && colors[j] === c) j++;
     const seg = escHtml(text.slice(i, j));
-    out += f ? `<mark>${seg}</mark>` : seg;
+    if (c === 0) {
+      out += seg;
+    } else {
+      const klass = cls[c];
+      out += klass ? `<mark class="${klass}">${seg}</mark>` : `<mark>${seg}</mark>`;
+    }
     i = j;
   }
   return out;
@@ -163,6 +180,9 @@ function buildPrintHtml(items: ArchiveCase[]): string {
   h2 { font-size: 9pt; color: #71717a; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; margin: 12pt 0 4pt; }
   .body { white-space: pre-wrap; word-break: keep-all; }
   mark { background: #fef08a; padding: 0 1px; }
+  mark.hl-blue { background: #bae6fd; }
+  mark.hl-green { background: #a7f3d0; }
+  mark.hl-red { background: #fecdd3; }
   .tags { margin-top: 6pt; }
   .tag { display: inline-block; background: #f4f4f5; color: #52525b; font-size: 9pt; padding: 1pt 6pt; border-radius: 999px; margin: 0 3pt 3pt 0; }
   .memos { margin-top: 10pt; padding-top: 6pt; border-top: 1px solid #e4e4e7; }
