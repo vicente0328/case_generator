@@ -664,17 +664,17 @@ export default function MyArchive() {
       </div>
 
       {/* 검색 + 정렬 */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 px-1.5">
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="사건번호·사건명·본문 검색"
-          className="flex-1 h-9 px-3 text-[13px] border border-zinc-200 rounded-lg outline-none focus:border-blue-400 transition-colors bg-white"
+          className="flex-1 min-w-0 h-9 px-3 text-[13px] border border-zinc-200 rounded-lg outline-none focus:border-blue-400 transition-colors bg-white"
         />
         <select
           value={sortMode}
           onChange={e => setSortMode(e.target.value as SortMode)}
-          className="h-9 px-3 text-[13px] border border-zinc-200 rounded-lg outline-none focus:border-blue-400 transition-colors bg-white"
+          className="h-9 px-2.5 text-[13px] border border-zinc-200 rounded-lg outline-none focus:border-blue-400 transition-colors bg-white"
         >
           <option value="dateDesc">선고일 최신순</option>
           <option value="importanceDesc">중요도 높은 순</option>
