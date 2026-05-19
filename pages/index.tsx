@@ -567,12 +567,12 @@ export default function Home() {
   const [showModelNotice, setShowModelNotice] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const dismissed = localStorage.getItem("modelNoticeDismissedV1");
+    const dismissed = localStorage.getItem("modelNoticeDismissedV2");
     if (!dismissed) setShowModelNotice(true);
   }, []);
   const dismissModelNotice = () => {
     setShowModelNotice(false);
-    if (typeof window !== "undefined") localStorage.setItem("modelNoticeDismissedV1", "1");
+    if (typeof window !== "undefined") localStorage.setItem("modelNoticeDismissedV2", "1");
   };
 
   const [activeTab, setActiveTab] = useState<LawArea>("민사법");
@@ -1213,6 +1213,17 @@ ${renderSectionsHtml(post.content as string || "")}
                   더 좋은 모델로 더 많이 도와드리지 못해 죄송한 마음입니다.
                   추후 여건이 나아지는 대로 한도를 다시 완화할 수 있도록 노력하겠습니다.
                   너른 양해 부탁드립니다.
+                </p>
+                <p className="text-zinc-500">
+                  개선이 필요한 점이나 오류를 발견하신 경우, 페이지 하단의
+                  {" "}
+                  <a
+                    href="mailto:kennethkoh97@gmail.com?subject=Case Generator 문의"
+                    className="font-medium text-amber-800 hover:text-amber-900 underline underline-offset-2"
+                  >
+                    개발자에게 문의하기
+                  </a>
+                  를 통해 언제든 메일을 보내주세요. 작은 의견이라도 큰 도움이 됩니다.
                 </p>
               </div>
 
