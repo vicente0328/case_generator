@@ -5,6 +5,14 @@ import { admin } from "@/lib/firebaseAdmin";
 import { SYSTEM_PROMPT_CIVIL, SYSTEM_PROMPT_PUBLIC, SYSTEM_PROMPT_CRIMINAL } from "@/lib/defaultPrompts";
 import type { CaseData } from "./case-lookup";
 
+// 모델별 식별자 / 가격
+const MODEL_PRO = "gemini-3.1-pro-preview";
+const MODEL_LITE = "gemini-3.1-flash-lite";
+
+// 로그인 유저 프리미엄(pro) 모델 사용 한도
+const WEEKLY_PRO_LIMIT = 3;
+const TOTAL_PRO_LIMIT = 10;
+
 // Firestore 프롬프트 캐시 (1분 TTL)
 let _promptCache: { civil: string | null; public: string | null; criminal: string | null; cachedAt: number } | null = null;
 
@@ -45,6 +53,74 @@ function getRulingType(caseNumber: string, court: string): string {
   return "판결";
 }
 
+// ISO 주(week) 키: "2026-W21" 형식. UTC 기준으로 단순화 — 사용 한도 산정에만 사용.
+function getWeekKey(date: Date = new Date()): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+// Authorization 헤더에서 Firebase ID 토큰 검증 → uid 반환 (실패 시 null)
+async function verifyUid(req: NextApiRequest): Promise<string | null> {
+  const auth = req.headers.authorization || "";
+  const m = /^Bearer\s+(.+)$/.exec(auth);
+  if (!m) return null;
+  try {
+    const decoded = await admin.auth().verifyIdToken(m[1]);
+    return decoded.uid;
+  } catch {
+    return null;
+  }
+}
+
+// 로그인 유저의 pro 모델 가용성 판단 — 사용량은 doc 에서 1회만 읽음.
+// 반환값: pro 사용 가능 여부 + 클라이언트 노출용 사용량 요약
+async function checkProAvailability(uid: string): Promise<{
+  canUsePro: boolean;
+  weeklyProCount: number;
+  totalProCount: number;
+}> {
+  const ref = admin.firestore().collection("usage").doc(uid);
+  try {
+    const snap = await ref.get();
+    const data = snap.exists ? snap.data() ?? {} : {};
+    const weekKey = getWeekKey();
+    const weeklyProCount = data.weekKey === weekKey ? Number(data.weeklyProCount ?? 0) : 0;
+    const totalProCount = Number(data.totalProCount ?? 0);
+    const canUsePro = weeklyProCount < WEEKLY_PRO_LIMIT && totalProCount < TOTAL_PRO_LIMIT;
+    return { canUsePro, weeklyProCount, totalProCount };
+  } catch (e) {
+    console.error("usage 조회 실패 — pro 폴백 불가, lite 사용:", e);
+    return { canUsePro: false, weeklyProCount: 0, totalProCount: 0 };
+  }
+}
+
+// pro 모델 사용 성공 후 사용량 증가 — 주(week) 경계에서 weeklyProCount 리셋.
+async function incrementProUsage(uid: string): Promise<void> {
+  const ref = admin.firestore().collection("usage").doc(uid);
+  const weekKey = getWeekKey();
+  try {
+    await admin.firestore().runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists ? snap.data() ?? {} : {};
+      const sameWeek = data.weekKey === weekKey;
+      const nextWeekly = (sameWeek ? Number(data.weeklyProCount ?? 0) : 0) + 1;
+      const nextTotal = Number(data.totalProCount ?? 0) + 1;
+      tx.set(ref, {
+        weekKey,
+        weeklyProCount: nextWeekly,
+        totalProCount: nextTotal,
+        lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+  } catch (e) {
+    console.error("usage 증가 실패:", e);
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -56,6 +132,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { caseData, lawArea = "민사법" } = req.body as { caseData: CaseData; lawArea: LawArea };
   if (!caseData) {
     return res.status(400).json({ error: "판례 데이터가 없습니다." });
+  }
+
+  // 인증 + pro 모델 가용성 판단
+  const uid = await verifyUid(req);
+  let usePro = false;
+  let usageSummary: { weeklyProCount: number; totalProCount: number; weeklyLimit: number; totalLimit: number } | null = null;
+  if (uid) {
+    const avail = await checkProAvailability(uid);
+    usePro = avail.canUsePro;
+    usageSummary = {
+      weeklyProCount: avail.weeklyProCount,
+      totalProCount: avail.totalProCount,
+      weeklyLimit: WEEKLY_PRO_LIMIT,
+      totalLimit: TOTAL_PRO_LIMIT,
+    };
   }
 
   // Firestore 프롬프트 로드 (실패 시 코드 기본값 사용)
@@ -101,7 +192,7 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
     ? `${courtName} ${dateStr} 선고 ${caseData.caseNumber} ${rulingType}`
     : `${courtName} ${caseData.caseNumber} ${rulingType}`;
 
-  let modelUsed = "gemini-3.1-pro-preview";
+  let modelUsed = usePro ? MODEL_PRO : MODEL_LITE;
   let costInfo: { inputTokens: number; outputTokens: number; costUsd: number } | null = null;
 
   function is503(err: unknown): boolean {
@@ -109,10 +200,10 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
     return msg.includes("503") || msg.includes("Service Unavailable") || msg.includes("high demand");
   }
 
-  async function tryGemini(): Promise<void> {
+  async function tryGemini(modelId: string): Promise<void> {
     const genAI = new GoogleGenerativeAI(apiKey!);
     const model = genAI.getGenerativeModel({
-      model: "gemini-3.1-pro-preview",
+      model: modelId,
       systemInstruction: getSystemPrompt(lawArea),
     });
     const result = await model.generateContentStream(userPrompt);
@@ -125,10 +216,11 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
     if (usage) {
       const inputTokens = usage.promptTokenCount ?? 0;
       const outputTokens = usage.candidatesTokenCount ?? 0;
-      // gemini-3.1-pro-preview 가격: 입력 $2/1M, 출력 $12/1M (≤200K 토큰 기준)
-      costInfo = { inputTokens, outputTokens, costUsd: (inputTokens * 2 + outputTokens * 12) / 1_000_000 };
+      // pro: 입력 $2/1M, 출력 $12/1M / lite: 입력 $0.1/1M, 출력 $0.4/1M (≤200K 토큰)
+      const [inRate, outRate] = modelId === MODEL_PRO ? [2, 12] : [0.1, 0.4];
+      costInfo = { inputTokens, outputTokens, costUsd: (inputTokens * inRate + outputTokens * outRate) / 1_000_000 };
     }
-    modelUsed = "gemini-3.1-pro-preview";
+    modelUsed = modelId;
   }
 
   async function tryClaude(): Promise<void> {
@@ -164,15 +256,21 @@ ${caseData.fullText ? `## 판례 본문 (참고)\n${caseData.fullText.slice(0, 3
     // 판례 인용 헤더를 첫 청크로 주입 (parseContent가 [판례 제목] 마커로 파싱)
     send({ text: `[판례 제목]\n${citation}\n\n` });
 
+    const primaryModel = usePro ? MODEL_PRO : MODEL_LITE;
     try {
-      await tryGemini();
+      await tryGemini(primaryModel);
     } catch (err1) {
       if (!is503(err1)) throw err1;
-      console.warn("gemini-3.1-pro-preview 503 → claude-opus-4-6 폴백");
+      console.warn(`${primaryModel} 503 → claude-opus-4-6 폴백`);
       await tryClaude();
     }
 
-    send({ done: true, model: modelUsed, cost: costInfo });
+    // pro 모델 성공 시 사용량 증가 (claude 폴백된 경우는 pro 가용 토큰을 소진하지 않음)
+    if (uid && modelUsed === MODEL_PRO) {
+      await incrementProUsage(uid);
+    }
+
+    send({ done: true, model: modelUsed, cost: costInfo, usage: usageSummary });
   } catch (err: unknown) {
     console.error("generate error:", err);
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";

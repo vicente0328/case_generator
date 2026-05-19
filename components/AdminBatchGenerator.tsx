@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { type LawArea, classifyLawArea } from "@/lib/classifyLawArea";
@@ -98,9 +98,13 @@ export default function AdminBatchGenerator({ user, onNewPost, appendPayload }: 
         if (!res.ok) throw new Error(caseData.error || "판례 조회 실패");
 
         updateItem(i, { status: "generating" });
+        const token = await auth.currentUser?.getIdToken().catch(() => null);
         const genRes = await fetch("/api/generate", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ caseData, lawArea: classifyLawArea(caseData.caseNumber) }),
         });
         if (!genRes.body) throw new Error("스트림 오류");
