@@ -563,18 +563,6 @@ export default function Home() {
     if (typeof window !== "undefined") localStorage.setItem("archiveIntroDismissedV2", "1");
   };
 
-  // 모델 정책 공지 배너 (입력 단계에서만 노출, '확인' 시 영구 dismiss)
-  const [showModelNotice, setShowModelNotice] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const dismissed = localStorage.getItem("modelNoticeDismissedV2");
-    if (!dismissed) setShowModelNotice(true);
-  }, []);
-  const dismissModelNotice = () => {
-    setShowModelNotice(false);
-    if (typeof window !== "undefined") localStorage.setItem("modelNoticeDismissedV2", "1");
-  };
-
   const [activeTab, setActiveTab] = useState<LawArea>("민사법");
   const [step, setStep] = useState<Step>("input");
   const [input, setInput] = useState("");
@@ -1148,104 +1136,6 @@ ${renderSectionsHtml(post.content as string || "")}
               : "사건번호로 변시 사례형 문제를 생성합니다"}
           </p>
         </div>
-
-        {/* 모델 정책 변경 안내 (생성기 모드, 입력 단계에서만) */}
-        {showModelNotice && mode === "generator" && step === "input" && (
-          <div className="relative mb-6 overflow-hidden rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50 via-white to-orange-50 shadow-[0_2px_12px_rgba(180,83,9,0.06)]">
-            <button
-              onClick={dismissModelNotice}
-              aria-label="닫기"
-              className="absolute top-3 right-3 z-10 w-7 h-7 rounded-full text-zinc-400 hover:text-zinc-700 hover:bg-white/60 transition-colors flex items-center justify-center"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 6 6 18M6 6l12 12"/>
-              </svg>
-            </button>
-
-            <div className="relative px-6 sm:px-7 py-6 sm:py-7">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-flex items-center text-[10px] font-bold tracking-widest px-2 py-0.5 rounded-full bg-amber-600 text-white shadow-sm">
-                  공지
-                </span>
-                <span className="text-[11px] font-semibold text-amber-900/70 uppercase tracking-widest">
-                  문제 생성 모델 안내
-                </span>
-              </div>
-
-              <h2 className="text-[17px] sm:text-[19px] font-bold tracking-tight text-zinc-900 leading-snug mb-3">
-                먼저, 부족한 서비스를 이용해 주시는 모든 분들께 깊이 감사드립니다.
-              </h2>
-
-              <div className="space-y-3 text-[13px] sm:text-[13.5px] text-zinc-600 leading-relaxed max-w-[620px]">
-                <p>
-                  지금까지는 모든 분께 동일하게 프리미엄 모델(Gemini 3.1 Pro Preview)로
-                  문제 생성을 제공해 드렸으나, 예상보다 빠르게 늘어난 서버 비용을
-                  부족한 운영자의 역량으로 더 이상 감당하기 어려워졌습니다.
-                </p>
-                <p>
-                  서비스를 계속 무료로 유지해 드리고자 부득이하게 아래와 같이
-                  운영 방식을 조정하게 되었습니다. 미리 말씀드리지 못한 점,
-                  너른 양해와 함께 진심으로 송구한 마음을 전합니다.
-                </p>
-
-                <div className="mt-4 rounded-xl border border-amber-200/70 bg-white/70 backdrop-blur-sm px-4 py-3.5 space-y-2.5">
-                  <div className="flex items-start gap-2.5">
-                    <span className="mt-[5px] w-1.5 h-1.5 rounded-full bg-zinc-300 flex-shrink-0" />
-                    <p className="text-[12.5px] text-zinc-700">
-                      <span className="font-semibold">비로그인 이용 시</span> · Gemini 3.1 Flash Lite 모델로 생성됩니다.
-                    </p>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <span className="mt-[5px] w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
-                    <p className="text-[12.5px] text-zinc-700">
-                      <span className="font-semibold">로그인 이용 시</span> · Gemini 3.1 Pro Preview 모델을
-                      <span className="font-semibold"> 주 3회</span>까지 이용하실 수 있습니다.
-                      <br />
-                      <span className="text-zinc-500">
-                        주 3회를 초과하거나 누적 10회를 넘긴 이후에는 비로그인과 동일하게
-                        Flash Lite 모델로 자동 전환됩니다.
-                      </span>
-                    </p>
-                  </div>
-                </div>
-
-                <p className="pt-2 text-zinc-500">
-                  더 좋은 모델로 더 많이 도와드리지 못해 죄송한 마음입니다.
-                  추후 여건이 나아지는 대로 한도를 다시 완화할 수 있도록 노력하겠습니다.
-                  너른 양해 부탁드립니다.
-                </p>
-                <p className="text-zinc-500">
-                  개선이 필요한 점이나 오류를 발견하신 경우, 페이지 하단의
-                  {" "}
-                  <a
-                    href="mailto:kennethkoh97@gmail.com?subject=Case Generator 문의"
-                    className="font-medium text-amber-800 hover:text-amber-900 underline underline-offset-2"
-                  >
-                    개발자에게 문의하기
-                  </a>
-                  를 통해 언제든 메일을 보내주세요. 작은 의견이라도 큰 도움이 됩니다.
-                </p>
-              </div>
-
-              <div className="mt-5 flex items-center gap-3">
-                <button
-                  onClick={dismissModelNotice}
-                  className="inline-flex items-center gap-1.5 h-9 px-5 bg-zinc-900 hover:bg-zinc-800 text-white text-[13px] font-semibold rounded-xl transition-colors"
-                >
-                  확인했습니다
-                </button>
-                {!user && (
-                  <button
-                    onClick={() => setShowAuthModal(true)}
-                    className="text-[12px] font-medium text-amber-800 hover:text-amber-900 transition-colors"
-                  >
-                    로그인하고 Pro 모델 이용하기 →
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* My Archive 신규 기능 소개 (생성기 모드에서만) */}
         {showArchiveIntro && mode === "generator" && (
