@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { LawArea } from "@/lib/classifyLawArea";
+import { stripHtml, formatOutlineBody, parseLegalSections } from "@/lib/precedentText";
 
 export interface ArchiveMemo {
   id: string;
@@ -261,6 +262,33 @@ function ArchiveCaseCardImpl({
   const [busy, setBusy] = useState(false);
   const [collapsedPoints, setCollapsedPoints] = useState(false);
   const [collapsedRatio, setCollapsedRatio] = useState(false);
+  const [fullTextOpen, setFullTextOpen] = useState(false);
+  const [fullText, setFullText] = useState<string | null>(null);
+  const [fullTextLoading, setFullTextLoading] = useState(false);
+  const [fullTextError, setFullTextError] = useState<string | null>(null);
+  const isConstitutional = c.court === "헌법재판소";
+  const fullTextLabel = isConstitutional ? "결정 원문 보기" : "판례 원문 보기";
+
+  const toggleFullText = async () => {
+    const next = !fullTextOpen;
+    setFullTextOpen(next);
+    if (!next || fullText !== null || fullTextLoading) return;
+    setFullTextLoading(true);
+    setFullTextError(null);
+    try {
+      const res = await fetch(`/api/case-lookup?caseNumber=${encodeURIComponent(c.caseNumber)}`);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || "원문을 불러오지 못했습니다.");
+      }
+      const data = (await res.json()) as { fullText?: string };
+      setFullText((data.fullText || "").trim());
+    } catch (e) {
+      setFullTextError(e instanceof Error ? e.message : "원문을 불러오지 못했습니다.");
+    } finally {
+      setFullTextLoading(false);
+    }
+  };
 
   // 부모의 일괄 접기/펼치기 신호 — version 이 바뀔 때마다 적용 (각 카드의 개별 토글은 이후 자유롭게 가능)
   useEffect(() => {
@@ -699,6 +727,76 @@ function ArchiveCaseCardImpl({
           })(),
           document.body,
         )}
+
+      {/* 판례 원문 (요청 시 fetch) */}
+      <div className="px-5 py-3 border-t border-zinc-100">
+        <button
+          onClick={toggleFullText}
+          className="w-full h-10 px-3 text-[13px] font-semibold text-zinc-600 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg transition-colors inline-flex items-center justify-between gap-2"
+        >
+          <span className="inline-flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+            {fullTextLabel}
+            {fullTextLoading && <span className="text-[11px] font-normal text-zinc-400">불러오는 중…</span>}
+          </span>
+          <svg
+            className={`w-4 h-4 text-zinc-400 transition-transform ${fullTextOpen ? "rotate-180" : ""}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {fullTextOpen && (
+          <div className="mt-3 rounded-xl border border-zinc-100 overflow-hidden bg-white">
+            {fullTextError ? (
+              <div className="px-5 py-4 text-[13px] text-rose-600">{fullTextError}</div>
+            ) : fullTextLoading && fullText === null ? (
+              <div className="px-5 py-6 text-[13px] text-zinc-400 text-center">원문을 불러오는 중입니다…</div>
+            ) : !fullText ? (
+              <div className="px-5 py-6 text-[13px] text-zinc-400 text-center">표시할 원문이 없습니다.</div>
+            ) : (
+              (() => {
+                const clean = stripHtml(fullText);
+                const sections = parseLegalSections(clean);
+                const hasSections = sections.some(s => s.heading);
+                const isTruncated = clean.length > 100 && !/[.。」]$/.test(clean.trimEnd());
+                return (
+                  <div className="max-h-[600px] overflow-y-auto">
+                    {hasSections ? (
+                      <div className="divide-y divide-zinc-50">
+                        {sections.map((s, i) => (
+                          <div key={i} className="px-5 py-4">
+                            {s.heading && (
+                              <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                                {s.heading}
+                              </p>
+                            )}
+                            {s.body && (
+                              <p className="text-[13px] text-zinc-700 leading-[1.85] whitespace-pre-line">{formatOutlineBody(s.body)}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-5 py-4">
+                        <p className="text-[13px] text-zinc-700 leading-[1.85] whitespace-pre-line">{formatOutlineBody(clean)}</p>
+                      </div>
+                    )}
+                    {isTruncated && (
+                      <div className="px-5 py-2.5 border-t border-zinc-100 bg-zinc-50">
+                        <p className="text-[11px] text-zinc-400">※ 법제처 API 제공 분량 제한으로 원문 일부가 표시되지 않을 수 있습니다.</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 사례형 문제 액션 */}
       {onOpenInGenerator && (
