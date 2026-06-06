@@ -206,7 +206,7 @@ export default function Layout({ children, title = "Case Generator", onLogoClick
         </main>
 
         <footer className="py-8 text-center text-[11px] text-zinc-300">
-          <div className="mb-3">
+          <div className="mb-3 flex items-center justify-center gap-2 flex-wrap">
             <a
               href="mailto:kennethkoh97@gmail.com?subject=Case Generator 문의"
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-zinc-200 rounded-lg text-[12px] text-zinc-500 hover:text-zinc-800 hover:border-zinc-300 hover:shadow-sm transition-all"
@@ -217,6 +217,12 @@ export default function Layout({ children, title = "Case Generator", onLogoClick
               </svg>
               개발자에게 문의하기
             </a>
+            <Link
+              href="/privacy"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-zinc-200 rounded-lg text-[12px] text-zinc-500 hover:text-zinc-800 hover:border-zinc-300 hover:shadow-sm transition-all"
+            >
+              개인정보 처리방침
+            </Link>
           </div>
           © {new Date().getFullYear()} Case Generator
         </footer>
