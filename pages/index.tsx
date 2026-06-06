@@ -558,6 +558,8 @@ export default function Home() {
   const [guestModeEnabled, setGuestModeEnabled] = useState(true);
   const [rulingPreviewPost, setRulingPreviewPost] = useState<PostPreview | null>(null);
   const [showRulingPreview, setShowRulingPreview] = useState(false);
+  const [rulingPreviewIsCurrentCase, setRulingPreviewIsCurrentCase] = useState(false);
+  const [currentCaseExtractedText, setCurrentCaseExtractedText] = useState("");
 
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const autoSaveRef = useRef(false);
@@ -601,9 +603,38 @@ export default function Home() {
     return () => { timers.forEach(clearTimeout); clearTimeout(almostDoneTimer); clearTimeout(encouragementTimer); };
   }, [step]);
 
-  // 생성 대기 중 판결요지 미리보기 모달 — 같은 탭의 기존 문제 중 랜덤 선택
+  // 생성 대기 중 판결요지 미리보기 모달 — 현재 판례 우선, 없으면 다른 판례 랜덤 선택
   useEffect(() => {
     if (step !== "generating") return;
+
+    // 1. 현재 판례에 rulingRatio / rulingPoints가 있으면 바로 사용
+    const hasDirectRuling = !!(caseData?.rulingRatio?.trim() || caseData?.rulingPoints?.trim());
+    if (hasDirectRuling) {
+      const timer = setTimeout(() => {
+        setRulingPreviewIsCurrentCase(true);
+        setCurrentCaseExtractedText("");
+        setShowRulingPreview(true);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+
+    // 2. fullText에서 판결요지/판시사항 섹션 원문 발췌
+    let extracted = "";
+    if (caseData?.fullText) {
+      const ratioMatch = caseData.fullText.match(/【판결요지】([\s\S]*?)(?:【|$)/);
+      const pointsMatch = caseData.fullText.match(/【판시사항】([\s\S]*?)(?:【|$)/);
+      extracted = (ratioMatch?.[1] || pointsMatch?.[1] || "").trim();
+    }
+    if (extracted.length >= 50) {
+      const timer = setTimeout(() => {
+        setRulingPreviewIsCurrentCase(true);
+        setCurrentCaseExtractedText(extracted);
+        setShowRulingPreview(true);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+
+    // 3. 기존 방식: 다른 판례 랜덤 선택
     const candidates = feedPosts.filter(p => {
       const area = p.lawArea ?? classifyLawArea(p.caseNumber);
       const hasContent = !!(p.rulingRatio?.trim() || p.content?.trim());
@@ -612,6 +643,8 @@ export default function Home() {
     if (candidates.length === 0) return;
     const chosen = candidates[Math.floor(Math.random() * candidates.length)];
     const timer = setTimeout(() => {
+      setRulingPreviewIsCurrentCase(false);
+      setCurrentCaseExtractedText("");
       setRulingPreviewPost(chosen);
       setShowRulingPreview(true);
     }, 1500);
@@ -1082,6 +1115,8 @@ ${renderSectionsHtml(post.content as string || "")}
     setPostId(null); setInput(""); setVoted(null); setExistingPost(null);
     setShowManualInput(false); setManualText(""); setModelUsed(null); setGenerationCost(null);
     setShowRulingPreview(false);
+    setRulingPreviewIsCurrentCase(false);
+    setCurrentCaseExtractedText("");
   };
 
   return (
@@ -1900,14 +1935,17 @@ ${renderSectionsHtml(post.content as string || "")}
     </Layout>
 
     {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
-    {showRulingPreview && rulingPreviewPost && (
+    {showRulingPreview && (rulingPreviewIsCurrentCase ? !!caseData : !!rulingPreviewPost) && (
       <RulingPreviewModal
-        caseName={rulingPreviewPost.caseName}
-        caseNumber={rulingPreviewPost.caseNumber}
-        court={rulingPreviewPost.court}
-        date={rulingPreviewPost.date}
-        rulingRatio={rulingPreviewPost.rulingRatio}
-        content={rulingPreviewPost.content}
+        caseName={rulingPreviewIsCurrentCase ? caseData!.caseName : rulingPreviewPost!.caseName}
+        caseNumber={rulingPreviewIsCurrentCase ? caseData!.caseNumber : rulingPreviewPost!.caseNumber}
+        court={rulingPreviewIsCurrentCase ? caseData!.court : rulingPreviewPost!.court}
+        date={rulingPreviewIsCurrentCase ? caseData!.date : rulingPreviewPost!.date}
+        rulingRatio={rulingPreviewIsCurrentCase ? caseData!.rulingRatio : rulingPreviewPost!.rulingRatio}
+        rulingPoints={rulingPreviewIsCurrentCase ? caseData!.rulingPoints : undefined}
+        extractedText={rulingPreviewIsCurrentCase ? currentCaseExtractedText : undefined}
+        content={rulingPreviewIsCurrentCase ? undefined : rulingPreviewPost!.content}
+        isCurrentCase={rulingPreviewIsCurrentCase}
         generationComplete={step === "done"}
         onClose={() => setShowRulingPreview(false)}
       />

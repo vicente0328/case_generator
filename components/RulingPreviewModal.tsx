@@ -4,7 +4,10 @@ interface RulingPreviewModalProps {
   court: string;
   date: string;
   rulingRatio?: string;
+  rulingPoints?: string;
+  extractedText?: string;
   content?: string;
+  isCurrentCase?: boolean;
   generationComplete: boolean;
   onClose: () => void;
 }
@@ -16,14 +19,22 @@ function formatDate(d: string): string {
 }
 
 export default function RulingPreviewModal({
-  caseName, caseNumber, court, date, rulingRatio, content, generationComplete, onClose,
+  caseName, caseNumber, court, date, rulingRatio, rulingPoints, extractedText, content, isCurrentCase, generationComplete, onClose,
 }: RulingPreviewModalProps) {
   const ratio = (rulingRatio || "").trim();
+  const points = (rulingPoints || "").trim();
   let previewText = "";
-  let previewType: "ruling" | "analysis" = "ruling";
+  let previewType: "ruling" | "points" | "extracted" | "analysis" = "ruling";
 
   if (ratio) {
     previewText = ratio;
+    previewType = "ruling";
+  } else if (points) {
+    previewText = points;
+    previewType = "points";
+  } else if (extractedText) {
+    previewText = extractedText;
+    previewType = "extracted";
   } else {
     // 판결요지가 없으면 content에서 해설/법리 부분 추출
     const match = (content || "").match(/\[해설(?:\s*및\s*모범답안)?\]([\s\S]*?)(?:\[모델\s*판례|$)/);
@@ -47,7 +58,10 @@ export default function RulingPreviewModal({
         {/* 안내 문구 */}
         <div className="px-6 py-3.5 bg-blue-50 border-b border-blue-100 flex items-center justify-between flex-shrink-0">
           <p className="text-[13px] text-blue-700 leading-relaxed">
-            기다리시는 동안 다른 사건의 {previewType === "ruling" ? "판결요지" : "해설"}을 읽어보시는 건 어떨까요?
+            {isCurrentCase
+            ? `기다리시는 동안 이 사건의 ${previewType === "ruling" ? "판결요지" : previewType === "points" ? "판시사항" : "판례 내용"}을 읽어보시는 건 어떨까요?`
+            : `기다리시는 동안 다른 사건의 ${previewType === "ruling" || previewType === "points" ? "판결요지" : "해설"}을 읽어보시는 건 어떨까요?`
+          }
           </p>
           <button
             onClick={onClose}
@@ -62,7 +76,7 @@ export default function RulingPreviewModal({
         {/* 헤더 */}
         <div className="px-6 pt-5 pb-4 border-b border-zinc-100 flex-shrink-0">
           <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">
-            {previewType === "ruling" ? "판결요지 미리보기" : "해설 미리보기"}
+            {previewType === "ruling" ? "판결요지 미리보기" : previewType === "points" ? "판시사항 미리보기" : previewType === "extracted" ? "판례 원문 발췌" : "해설 미리보기"}
           </span>
           <p className="text-[15px] font-bold text-zinc-900 tracking-tight font-mono mt-2.5">{caseNumber}</p>
           <p className="text-[12px] text-zinc-400 mt-1">
