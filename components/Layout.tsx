@@ -59,105 +59,58 @@ function GuideModal({ onClose }: { onClose: () => void }) {
 }
 
 function NameEditor({ onClose }: { onClose: () => void }) {
-  const { user, customDisplayName, updateDisplayName } = useAuth();
+  const { user, customDisplayName, updateDisplayName, deleteAccount } = useAuth();
+  const router = useRouter();
+  const isGoogle = user?.providerData.some(p => p.providerId === "google.com");
+
+  const [view, setView] = useState<"edit" | "delete">("edit");
+
+  // edit view state
   const [value, setValue] = useState(customDisplayName || user?.displayName || "");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [editError, setEditError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  // delete view state
+  const [password, setPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const pwInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (view === "edit") inputRef.current?.focus();
+    else pwInputRef.current?.focus();
+  }, [view]);
 
   const handleSave = async () => {
-    if (!value.trim()) { setError("이름을 입력해주세요."); return; }
-    if (value.trim().length > 20) { setError("20자 이내로 입력해주세요."); return; }
+    if (!value.trim()) { setEditError("이름을 입력해주세요."); return; }
+    if (value.trim().length > 20) { setEditError("20자 이내로 입력해주세요."); return; }
     setSaving(true);
     try {
       await updateDisplayName(value.trim());
       onClose();
     } catch {
-      setError("저장에 실패했습니다.");
+      setEditError("저장에 실패했습니다.");
     } finally {
       setSaving(false);
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
-      <div
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden"
-        onClick={e => e.stopPropagation()}
-        style={{ animation: "modalIn 0.2s cubic-bezier(0.16,1,0.3,1)" }}
-      >
-        <div className="px-6 pt-6 pb-5 border-b border-zinc-100 flex items-center justify-between">
-          <p className="font-semibold text-[16px] tracking-tight">이름 변경</p>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-full bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 transition-colors text-[16px] font-medium flex items-center justify-center"
-          >
-            ×
-          </button>
-        </div>
-        <div className="px-6 py-5 space-y-3">
-          <input
-            ref={inputRef}
-            value={value}
-            onChange={e => { setValue(e.target.value); setError(""); }}
-            onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
-            placeholder="표시할 이름"
-            maxLength={20}
-            className="w-full h-10 px-3 border border-zinc-200 rounded-lg text-[14px] outline-none focus:border-blue-400 transition-colors"
-          />
-          {error && <p className="text-[12px] text-red-500">{error}</p>}
-          <p className="text-[11px] text-zinc-400">변경 시 내가 작성한 게시글 이름도 함께 업데이트됩니다.</p>
-        </div>
-        <div className="px-6 pb-5 flex gap-2">
-          <button
-            onClick={onClose}
-            className="flex-1 h-9 rounded-lg border border-zinc-200 text-[13px] text-zinc-500 hover:bg-zinc-50 transition-colors"
-          >
-            취소
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 h-9 rounded-lg bg-blue-900 text-white text-[13px] font-medium hover:bg-blue-800 transition-colors disabled:opacity-50"
-          >
-            {saving ? "저장 중..." : "저장"}
-          </button>
-        </div>
-      </div>
-      <style>{`@keyframes modalIn { from { opacity:0; transform:scale(0.95) } to { opacity:1; transform:scale(1) } }`}</style>
-    </div>
-  );
-}
-
-function DeleteAccountModal({ onClose }: { onClose: () => void }) {
-  const { user, deleteAccount } = useAuth();
-  const router = useRouter();
-  const isGoogle = user?.providerData.some(p => p.providerId === "google.com");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { if (!isGoogle) inputRef.current?.focus(); }, [isGoogle]);
-
   const handleDelete = async () => {
-    setLoading(true);
-    setError("");
+    setDeleting(true);
+    setDeleteError("");
     try {
       await deleteAccount(isGoogle ? undefined : password);
       router.push("/");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "오류가 발생했습니다.";
       if (msg.includes("wrong-password") || msg.includes("invalid-credential")) {
-        setError("비밀번호가 올바르지 않습니다.");
+        setDeleteError("비밀번호가 올바르지 않습니다.");
       } else {
-        setError(msg);
+        setDeleteError(msg);
       }
     } finally {
-      setLoading(false);
+      setDeleting(false);
     }
   };
 
@@ -169,53 +122,103 @@ function DeleteAccountModal({ onClose }: { onClose: () => void }) {
         onClick={e => e.stopPropagation()}
         style={{ animation: "modalIn 0.2s cubic-bezier(0.16,1,0.3,1)" }}
       >
-        <div className="px-6 pt-6 pb-5 border-b border-zinc-100 flex items-center justify-between">
-          <p className="font-semibold text-[16px] tracking-tight text-red-600">회원 탈퇴</p>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-full bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 transition-colors text-[16px] font-medium flex items-center justify-center"
-          >
-            ×
-          </button>
-        </div>
-        <div className="px-6 py-5 space-y-3">
-          <p className="text-[13px] text-zinc-600 leading-relaxed">
-            탈퇴하면 <strong>계정 정보와 My 판례함</strong>이 즉시 삭제됩니다.
-            생성하신 문제와 댓글은 <strong>익명으로 전환</strong>되어 서비스에 남습니다.
-          </p>
-          {!isGoogle && (
-            <div className="space-y-1">
+        {view === "edit" ? (
+          <>
+            <div className="px-6 pt-6 pb-5 border-b border-zinc-100 flex items-center justify-between">
+              <p className="font-semibold text-[16px] tracking-tight">이름 변경</p>
+              <button
+                onClick={onClose}
+                className="w-7 h-7 rounded-full bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 transition-colors text-[16px] font-medium flex items-center justify-center"
+              >
+                ×
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-3">
               <input
                 ref={inputRef}
-                type="password"
-                value={password}
-                onChange={e => { setPassword(e.target.value); setError(""); }}
-                onKeyDown={e => { if (e.key === "Enter") handleDelete(); if (e.key === "Escape") onClose(); }}
-                placeholder="비밀번호 확인"
-                className="w-full h-10 px-3 border border-zinc-200 rounded-lg text-[14px] outline-none focus:border-red-300 transition-colors"
+                value={value}
+                onChange={e => { setValue(e.target.value); setEditError(""); }}
+                onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
+                placeholder="표시할 이름"
+                maxLength={20}
+                className="w-full h-10 px-3 border border-zinc-200 rounded-lg text-[14px] outline-none focus:border-blue-400 transition-colors"
               />
+              {editError && <p className="text-[12px] text-red-500">{editError}</p>}
+              <p className="text-[11px] text-zinc-400">변경 시 내가 작성한 게시글 이름도 함께 업데이트됩니다.</p>
             </div>
-          )}
-          {isGoogle && (
-            <p className="text-[12px] text-zinc-400">Google 계정으로 재인증 후 탈퇴가 진행됩니다.</p>
-          )}
-          {error && <p className="text-[12px] text-red-500">{error}</p>}
-        </div>
-        <div className="px-6 pb-5 flex gap-2">
-          <button
-            onClick={onClose}
-            className="flex-1 h-9 rounded-lg border border-zinc-200 text-[13px] text-zinc-500 hover:bg-zinc-50 transition-colors"
-          >
-            취소
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={loading || (!isGoogle && !password)}
-            className="flex-1 h-9 rounded-lg bg-red-600 text-white text-[13px] font-medium hover:bg-red-500 transition-colors disabled:opacity-40"
-          >
-            {loading ? "처리 중..." : "탈퇴하기"}
-          </button>
-        </div>
+            <div className="px-6 pb-4 flex gap-2">
+              <button
+                onClick={onClose}
+                className="flex-1 h-9 rounded-lg border border-zinc-200 text-[13px] text-zinc-500 hover:bg-zinc-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 h-9 rounded-lg bg-blue-900 text-white text-[13px] font-medium hover:bg-blue-800 transition-colors disabled:opacity-50"
+              >
+                {saving ? "저장 중..." : "저장"}
+              </button>
+            </div>
+            <div className="px-6 pb-5 flex justify-center">
+              <button
+                onClick={() => setView("delete")}
+                className="text-[11px] text-zinc-300 hover:text-red-400 transition-colors underline underline-offset-2"
+              >
+                회원 탈퇴
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="px-6 pt-6 pb-5 border-b border-zinc-100 flex items-center justify-between">
+              <p className="font-semibold text-[16px] tracking-tight text-red-600">회원 탈퇴</p>
+              <button
+                onClick={onClose}
+                className="w-7 h-7 rounded-full bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 transition-colors text-[16px] font-medium flex items-center justify-center"
+              >
+                ×
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-3">
+              <p className="text-[13px] text-zinc-600 leading-relaxed">
+                탈퇴하면 <strong>계정 정보와 My 판례함</strong>이 즉시 삭제됩니다.
+                생성하신 문제와 댓글은 <strong>익명으로 전환</strong>되어 서비스에 남습니다.
+              </p>
+              {!isGoogle && (
+                <input
+                  ref={pwInputRef}
+                  type="password"
+                  value={password}
+                  onChange={e => { setPassword(e.target.value); setDeleteError(""); }}
+                  onKeyDown={e => { if (e.key === "Enter") handleDelete(); if (e.key === "Escape") setView("edit"); }}
+                  placeholder="비밀번호 확인"
+                  className="w-full h-10 px-3 border border-zinc-200 rounded-lg text-[14px] outline-none focus:border-red-300 transition-colors"
+                />
+              )}
+              {isGoogle && (
+                <p className="text-[12px] text-zinc-400">Google 계정으로 재인증 후 탈퇴가 진행됩니다.</p>
+              )}
+              {deleteError && <p className="text-[12px] text-red-500">{deleteError}</p>}
+            </div>
+            <div className="px-6 pb-5 flex gap-2">
+              <button
+                onClick={() => setView("edit")}
+                className="flex-1 h-9 rounded-lg border border-zinc-200 text-[13px] text-zinc-500 hover:bg-zinc-50 transition-colors"
+              >
+                돌아가기
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting || (!isGoogle && !password)}
+                className="flex-1 h-9 rounded-lg bg-red-600 text-white text-[13px] font-medium hover:bg-red-500 transition-colors disabled:opacity-40"
+              >
+                {deleting ? "처리 중..." : "탈퇴하기"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
       <style>{`@keyframes modalIn { from { opacity:0; transform:scale(0.95) } to { opacity:1; transform:scale(1) } }`}</style>
     </div>
@@ -227,7 +230,6 @@ export default function Layout({ children, title = "Case Generator", onLogoClick
   const [showAuth, setShowAuth] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showNameEditor, setShowNameEditor] = useState(false);
-  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   const displayName = customDisplayName || user?.displayName || user?.email?.split("@")[0] || "";
 
@@ -280,12 +282,6 @@ export default function Layout({ children, title = "Case Generator", onLogoClick
                   >
                     로그아웃
                   </button>
-                  <button
-                    onClick={() => setShowDeleteAccount(true)}
-                    className="h-8 px-2 text-[12px] text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    탈퇴
-                  </button>
                 </div>
               ) : (
                 <button
@@ -329,7 +325,6 @@ export default function Layout({ children, title = "Case Generator", onLogoClick
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
       {showNameEditor && <NameEditor onClose={() => setShowNameEditor(false)} />}
-      {showDeleteAccount && <DeleteAccountModal onClose={() => setShowDeleteAccount(false)} />}
     </>
   );
 }
