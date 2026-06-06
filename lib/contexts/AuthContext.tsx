@@ -13,6 +13,9 @@ import {
   signInWithPopup,
   signOut,
   updateProfile,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  EmailAuthProvider,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, query, where, getDocs, writeBatch } from "firebase/firestore";
 import { auth, db, googleProvider, isConfigured } from "@/lib/firebase";
@@ -26,6 +29,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   updateDisplayName: (name: string) => Promise<void>;
+  deleteAccount: (password?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -76,6 +80,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth);
   };
 
+  const deleteAccount = async (password?: string) => {
+    if (!user) throw new Error("로그인 상태가 아닙니다.");
+
+    // 재인증 (Firebase는 민감한 작업 전 재인증을 요구)
+    const providerIds = user.providerData.map(p => p.providerId);
+    if (providerIds.includes("password") && password) {
+      const credential = EmailAuthProvider.credential(user.email!, password);
+      await reauthenticateWithCredential(user, credential);
+    } else if (providerIds.includes("google.com")) {
+      await reauthenticateWithPopup(user, googleProvider);
+    }
+
+    const token = await user.getIdToken();
+    const res = await fetch("/api/delete-account", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || "계정 삭제에 실패했습니다.");
+    }
+    // Auth 계정은 서버에서 이미 삭제됨 — 로컬 상태 정리
+    await signOut(auth);
+  };
+
   const updateDisplayName = async (name: string) => {
     if (!user) return;
     const trimmed = name.trim();
@@ -110,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, customDisplayName, signIn, signUp, signInWithGoogle, logout, updateDisplayName }}>
+    <AuthContext.Provider value={{ user, loading, customDisplayName, signIn, signUp, signInWithGoogle, logout, updateDisplayName, deleteAccount }}>
       {children}
     </AuthContext.Provider>
   );

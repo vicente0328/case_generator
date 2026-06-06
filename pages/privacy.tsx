@@ -167,7 +167,7 @@ export default function PrivacyPage() {
                 headers={["항목", "보유 기간"]}
                 rows={[
                   ["회원 인증 정보", "회원 탈퇴 시까지"],
-                  ["생성된 문제 및 댓글", "게시물 삭제 요청 또는 회원 탈퇴 시까지"],
+                  ["생성된 문제 및 댓글", "게시물 삭제 요청 시까지 (회원 탈퇴 시 익명 처리 후 보존)"],
                   ["AI 사용량 추적 정보", "회원 탈퇴 시까지"],
                   ["My 판례함", "이용자가 직접 삭제하거나 회원 탈퇴 시까지"],
                   ["Google Analytics 데이터", "Google LLC 정책에 따름 (기본 26개월)"],
@@ -183,7 +183,7 @@ export default function PrivacyPage() {
             <Section id="s5" title="5. 개인정보의 파기 절차 및 방법">
               <p>개인정보 보유기간의 경과, 처리목적 달성 등으로 개인정보가 불필요하게 되었을 때에는 지체없이 해당 개인정보를 파기합니다.</p>
               <ol className="list-decimal list-inside space-y-2 pl-1">
-                <li><strong className="text-zinc-700">파기 절차</strong> — Firebase Firestore에 저장된 개인정보는 보유 기간 경과 또는 회원 탈퇴·삭제 요청 시 즉시 파기됩니다.</li>
+                <li><strong className="text-zinc-700">파기 절차</strong> — 회원 탈퇴 시 계정 인증 정보, AI 사용량 기록, My 판례함 데이터는 즉시 파기합니다. 생성된 문제 및 댓글은 서비스 연속성을 위해 삭제하지 않으나, 작성자를 특정할 수 있는 모든 식별 정보(사용자 ID·이름)를 즉시 익명 처리합니다. 익명 처리된 게시물은 개인정보에 해당하지 않습니다(「개인정보 보호법」 제58조의2).</li>
                 <li><strong className="text-zinc-700">파기 방법</strong> — 전자적 파일 형태로 기록·저장된 개인정보는 기록을 재생할 수 없도록 파기합니다.</li>
               </ol>
             </Section>
